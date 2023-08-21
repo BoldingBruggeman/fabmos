@@ -1,4 +1,4 @@
 /examples/*.nc
 /examples/*.log
-/src/fabmos/__pycache__
+__pycache__
 /examples/*.png

@@ -60,7 +60,7 @@ out = sim.output_manager.add_netcdf_file(
 )
 out.request('swr', *sim.fabm.default_outputs, time_average=True)
 
-sim.start(datetime.datetime(2000, 1, 1), 3600.0, nstep_transport=10)
+sim.start(datetime.datetime(2000, 1, 1), 3600.0)
 while sim.time < datetime.datetime(2001, 1, 1):
     sim.advance()
 sim.finish()
