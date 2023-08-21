@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fabmos"
+version = "0.0.1"
+authors = [
+  {name = "Jorn Bruggeman", email = "jorn@bolding-bruggeman.com"}
+]
+description = "Offline simulator for FABM"
+requires-python = ">=3.7"
+dependencies = [
+  "pygetm"
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+  "Operating System :: OS Independent"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fabmos"]
