@@ -173,6 +173,8 @@ def create_domain(path: str) -> pygetm.domain.Domain:
     nwets_cum = domain.counts.cumsum()
     domain.offsets[1:] = nwets_cum[:-1]
     domain.nwet_tot = nwets_cum[-1]
+    offset = domain.offsets[domain.tiling.rank]
+    domain.tmm_slice = slice(offset, offset + domain.nwet)
 
     if False:
         # Testing:
@@ -238,3 +240,6 @@ class Simulator(simulator.Simulator):
                 (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
             )
             # packed_values is the packed TMM-style array with tracer values
+
+            # Copy updated tracer values back to authoratitive array
+            tracer.values.T[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
