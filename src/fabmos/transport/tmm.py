@@ -25,6 +25,7 @@ rank = _comm.Get_rank()
 verbose = True
 use_root = True
 
+
 def _read_grid(fn):
     ds = xr.open_dataset(
         fn,
@@ -122,14 +123,76 @@ def create_domain(path: str) -> pygetm.domain.Domain:
     # open files, read 2D lon, lat, mask (pygetm convention, 0=land, 1=water), H
     # squeeze().T
 
-    if rank == 0:
-        bathy, ideep, x, y, z = _read_grid(path)
-        print("shapes: bathy, x, y: ",bathy.shape, x.shape, y.shape)
+    bathy, ideep, lon, lat, z = _read_grid(path)
+    print("shapes: bathy, lon, lat: ", bathy.shape, lon.shape, lat.shape)
 
-        # find depth variable - for now
-        H = np.ones(bathy.shape)
-    else:
-        bathy = ideep = x = y = z = None
+    # If x,y coordinates are effectively 1D, reshape them to reflect that
+    if lon.shape[0] == 1 and lat.shape[0] == 1:
+        lon = lon[0, :]
+        lat = lat[0, :]
+
+    mask_hz = ideep != 0
+    lon, lat, ideep = np.broadcast_arrays(lon[np.newaxis, :], lat[:, np.newaxis], ideep)
+
+    # Squeeze out columsn with only land. This maps the horizontal from 2D to 1D
+    lon_packed = lon[mask_hz]
+    lat_packed = lat[mask_hz]
+    ideep_packed = ideep[mask_hz]
+
+    # find depth variable - for now
+    H_packed = np.ones(lon_packed.shape)
+
+    # Simple subdomain division along x dimension
+    tiling = pygetm.parallel.Tiling(nrow=1, ncol=_comm.size, comm=_comm)
+
+    nx, ny, nz = lon_packed.shape[-1], 1, bathy.shape[0]
+    domain = pygetm.domain.create(
+        nx,
+        ny,
+        nz,
+        lon=lon_packed[np.newaxis, :],
+        lat=lat_packed[np.newaxis, :],
+        mask=1,
+        H=H_packed[np.newaxis, :],
+        spherical=True,
+        tiling=tiling,
+    )
+
+    slc_loc, slc_glob, shape_loc, _ = domain.tiling.subdomain2slices()
+    ideep_loc = np.zeros(shape_loc, dtype=ideep.dtype)
+    ideep_loc[slc_loc] = ideep_packed[np.newaxis, :][slc_glob]
+
+    # 3D mask for local subdomain
+    # (already in nx,1,nz order as TMM needs z to be fastest varying)
+    domain.wet_loc = np.arange(1, nz + 1) <= ideep_loc.T[:, :, np.newaxis]
+
+    domain.nwet = ideep_loc.sum()
+    domain.counts = np.empty(domain.tiling.n, dtype=int)
+    domain.offsets = np.zeros_like(domain.counts)
+    domain.tiling.comm.Allgather(domain.nwet, domain.counts)
+    nwets_cum = domain.counts.cumsum()
+    domain.offsets[1:] = nwets_cum[:-1]
+    domain.nwet_tot = nwets_cum[-1]
+
+    if False:
+        # Testing:
+        # Initialize a local 3D array (nz, 1, nx) with horizontal indices,
+        # then allgather that array and verify its minimum (0), maximum (nwet_tot-1),
+        # and the difference between consecutive values (0 if from same column,
+        # 1 if from different ones)
+        v_all = np.empty(domain.nwet_tot)
+        v = np.empty((nz, 1, domain.tiling.nx_sub), dtype=float)
+        v[...] = np.arange(domain.tiling.xoffset, domain.tiling.xoffset + v.shape[-1])
+        domain.tiling.comm.Allgatherv(
+            [v.T[domain.wet_loc], MPI.DOUBLE],
+            (v_all, domain.counts, domain.offsets, MPI.DOUBLE),
+        )
+        assert v_all.min() == 0 and v_all.max() == domain.nwet_tot - 1
+        v_diff = np.diff(v_all)
+        assert v_diff.min() == 0 and v_diff.max() == 1
+
+    return domain
+
     nprof, ib, ie = _profile_indices(ideep, verbose=verbose)
     nlp, indx, counts, offsets = _mapping_arrays(nprof, ib, ie, verbose=verbose)
     sys.exit()
@@ -156,8 +219,6 @@ def create_domain(path: str) -> pygetm.domain.Domain:
         recvbuf = [a, counts, offsets[0:-1], MPI.DOUBLE]
         _comm.Gatherv(b, recvbuf)
 
-
-
     lon = np.arange(0.0, 10.0, 0.5)
     lat = np.arange(10.0, 40.0, 0.5)
     return pygetm.domain.create_spherical(lon=lon, lat=lat, mask=1, H=H, nz=15)
@@ -169,6 +230,11 @@ class Simulator(simulator.Simulator):
         self.tmm_logger = self.logger.getChild("tmm")
 
     def transport(self, timestep: float):
+        packed_values = np.empty(self.domain.nwet_tot)
         for tracer in self.tracers:
             print(tracer.name)
-            # update tracer.all_values in place
+            self.domain.tiling.comm.Allgatherv(
+                [tracer.values.T[self.domain.wet_loc], MPI.DOUBLE],
+                (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
+            )
+            # packed_values is the packed TMM-style array with tracer values
