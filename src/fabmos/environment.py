@@ -52,7 +52,7 @@ class ShortWaveRadiation:
 
     def update(self, time: cftime.datetime):
         if not self._ready:
-            assert self.tcc.require_set(self.logger)
+#KB            assert self.tcc.require_set(self.logger)
             self._ready = True
 
         hh = time.hour + time.minute / 60.0 + time.second / 3600.0

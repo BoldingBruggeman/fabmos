@@ -11,7 +11,8 @@ FABM_CONFIG = dict(
     )
 )
 
-domain = fabmos.transport.tmm.create_domain("<PATH>")
+grid_file = "/data/kb/OceanICU/MITgcm_2.8deg/grid.mat"
+domain = fabmos.transport.tmm.create_domain(grid_file)
 
 sim = fabmos.transport.tmm.Simulator(domain, FABM_CONFIG)
 
@@ -22,6 +23,6 @@ out.request(*sim.fabm.default_outputs, time_average=True)
 
 # 1 hour time step for BGC, 12 hour for transport
 sim.start(datetime.datetime(2000, 1, 1), 3600.0, nstep_transport=12)
-while sim.time < datetime.datetime(2001, 1, 1):
+while sim.time < datetime.datetime(2000, 1, 2):
     sim.advance()
 sim.finish()
