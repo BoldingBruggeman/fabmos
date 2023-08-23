@@ -29,10 +29,7 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
         global_array: Optional[pygetm.core.Array] = None,
     ):
         self._grid = grid
-        self._slice = (
-            np.newaxis,
-            mapping,
-        )
+        self._slice = (mapping,)
         shape = source.shape[:-2] + (grid.ny, grid.nx)
         z = None
         if source.ndim > 2:
@@ -56,7 +53,7 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
             else:
                 out[slice_spec] = self._global_array
                 return out[slice_spec]
-        self.values[self._slice] = compressed_values
+        self.values[self._slice] = compressed_values[..., 0, :]
         return super().get(out, slice_spec)
 
     @property
