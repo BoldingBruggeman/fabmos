@@ -1,21 +1,15 @@
 import sys
+import functools
+from typing import Optional, Tuple
+
 import xarray as xr
 import numpy as np
+import numpy.typing as npt
 from mpi4py import MPI
 import h5py
 
-from typing import (
-    MutableMapping,
-    Optional,
-    Tuple,
-    Iterable,
-    Union,
-    Callable,
-    Any,
-    Mapping,
-)
-
 import pygetm
+from pygetm.constants import CENTERS, INTERFACES
 from .. import simulator
 
 _comm = MPI.COMM_WORLD.Dup()
@@ -24,6 +18,57 @@ rank = _comm.Get_rank()
 
 verbose = True
 use_root = True
+
+
+class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
+    def __init__(
+        self,
+        source: pygetm.output.operators.Base,
+        grid: Optional[pygetm.domain.Grid],
+        mapping: np.ndarray,
+        global_array: Optional[pygetm.core.Array] = None,
+    ):
+        self._grid = grid
+        self._slice = (
+            np.newaxis,
+            mapping,
+        )
+        shape = source.shape[:-2] + (grid.ny, grid.nx)
+        z = None
+        if source.ndim > 2:
+            z = CENTERS if source.shape[0] == grid.nz else INTERFACES
+            self._slice = (slice(None),) + self._slice
+        dims = pygetm.output.operators.grid2dims(grid, z)
+        expression = f"{self.__class__.__name__}({source.expression})"
+        super().__init__(source, shape=shape, dims=dims, expression=expression)
+        self.values.fill(self.fill_value)
+        self._global_array = None if global_array is None else global_array.values
+
+    def get(
+        self,
+        out: Optional[npt.ArrayLike] = None,
+        slice_spec: Tuple[int, ...] = (),
+    ) -> npt.ArrayLike:
+        compressed_values = self._source.get()
+        if self._global_array is not None:
+            if out is None:
+                return self._global_array
+            else:
+                out[slice_spec] = self._global_array
+                return out[slice_spec]
+        self.values[self._slice] = compressed_values
+        return super().get(out, slice_spec)
+
+    @property
+    def grid(self) -> pygetm.domain.Grid:
+        return self._grid
+
+    @property
+    def coords(self):
+        global_x = self._grid.lon if self._grid.domain.spherical else self._grid.x
+        global_y = self._grid.lat if self._grid.domain.spherical else self._grid.y
+        for c, g in zip(self._source.coords, (global_x, global_y, None)):
+            yield CompressedToFullGrid(c, self._grid, self._slice[-1], g)
 
 
 def _read_grid(fn, logger=None):
@@ -180,6 +225,26 @@ def create_domain(path: str, logger = None) -> pygetm.domain.Domain:
     domain.nwet_tot = nwets_cum[-1]
     offset = domain.offsets[domain.tiling.rank]
     domain.tmm_slice = slice(offset, offset + domain.nwet)
+
+    if domain.tiling.rank == 0:
+        tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1)
+        tiling.rank = 0
+        full_domain = pygetm.domain.create(
+            lon.shape[-1],
+            lon.shape[-2],
+            nz,
+            lon=lon,
+            lat=lat,
+            mask=ideep > 0,
+            H=H,
+            spherical=True,
+            tiling=tiling,
+        )
+        full_domain.initialize(pygetm.BAROCLINIC)
+        tf = functools.partial(
+            CompressedToFullGrid, grid=full_domain.T, mapping=mask_hz
+        )
+        domain.default_output_transforms.append(tf)
 
     if False:
         # Testing:
