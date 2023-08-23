@@ -26,20 +26,26 @@ verbose = True
 use_root = True
 
 
-def _read_grid(fn):
+def _read_grid(fn, logger=None):
     ds = xr.open_dataset(
         fn,
         engine="h5netcdf",
         phony_dims="sort",
     )
+    if rank == 0 and logger:
+        logger.info(
+                f"Reading grid information from: {fn}"
+        )
+
 
     bathy = np.asarray(ds["bathy"], dtype=int)
     ideep = np.asarray(ds["ideep"], dtype=int)
     x = np.asarray(ds["x"])
     y = np.asarray(ds["y"])
     z = np.asarray(ds["z"])
+    dz = np.asarray(ds["dz"])
 
-    return bathy, ideep, x, y, z
+    return bathy, ideep, x, y, z, dz
 
 
 def _profile_indices(
@@ -119,11 +125,9 @@ def _mapping_arrays(
     return nlp, indx, counts, offsets
 
 
-def create_domain(path: str) -> pygetm.domain.Domain:
-    # open files, read 2D lon, lat, mask (pygetm convention, 0=land, 1=water), H
-    # squeeze().T
+def create_domain(path: str, logger = None) -> pygetm.domain.Domain:
 
-    bathy, ideep, lon, lat, z = _read_grid(path)
+    bathy, ideep, lon, lat, z, dz = _read_grid(path, logger = logger)
     print("shapes: bathy, lon, lat: ", bathy.shape, lon.shape, lat.shape)
 
     # If x,y coordinates are effectively 1D, reshape them to reflect that
@@ -134,13 +138,14 @@ def create_domain(path: str) -> pygetm.domain.Domain:
     mask_hz = ideep != 0
     lon, lat, ideep = np.broadcast_arrays(lon[np.newaxis, :], lat[:, np.newaxis], ideep)
 
-    # Squeeze out columsn with only land. This maps the horizontal from 2D to 1D
+    # Squeeze out columns with only land. This maps the horizontal from 2D to 1D
     lon_packed = lon[mask_hz]
     lat_packed = lat[mask_hz]
     ideep_packed = ideep[mask_hz]
 
-    # find depth variable - for now
-    H_packed = np.ones(lon_packed.shape)
+    # find depth variable
+    H = np.sum(dz[:,:,:], axis=0)
+    H_packed = np.sum(dz[:,:,:], axis=0)[mask_hz]
 
     # Simple subdomain division along x dimension
     tiling = pygetm.parallel.Tiling(nrow=1, ncol=_comm.size, comm=_comm)
