@@ -11,7 +11,7 @@ FABM_CONFIG = dict(
     )
 )
 
-grid_file = "/data/kb/OceanICU/MITgcm_2.8deg/grid.mat"
+grid_file = "./MITgcm_2.8deg/grid.mat"
 domain = fabmos.transport.tmm.create_domain(grid_file)
 
 sim = fabmos.transport.tmm.Simulator(domain, FABM_CONFIG)
