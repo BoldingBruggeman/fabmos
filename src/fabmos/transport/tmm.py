@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 import xarray as xr
 import numpy as np
 import numpy.typing as npt
+import cftime
 from mpi4py import MPI
 import h5py
 
@@ -26,7 +27,7 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
         source: pygetm.output.operators.Base,
         grid: Optional[pygetm.domain.Grid],
         mapping: np.ndarray,
-        global_array: Optional[pygetm.core.Array] = None
+        global_array: Optional[pygetm.core.Array] = None,
     ):
         self._grid = grid
         self._slice = (mapping,)
@@ -68,6 +69,25 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
         globals_arrays = (global_x, global_y, global_z)
         for c, g in zip(self._source.coords, globals_arrays):
             yield CompressedToFullGrid(c, self._grid, self._slice[-1], g)
+
+
+class TransportMatrices(pygetm.input.LazyArray):
+    def __init__(self, template: str, ntime: int):
+        # here you open one of the transport matrix files (e.g., template % 0)
+        # to determine the number of data points n and the matrix data type dtype
+        n = 2000
+        dtype = float  # should be based on dtype used in .mat file
+        name = template  # some human readable name for the data (all time points)
+        self._n = n
+        super().__init__((ntime, n), dtype, name)
+
+    def __getitem__(self, slices) -> np.ndarray:
+        assert isinstance(slices[0], (int, np.integer))
+        itime = slices[0]
+        # TODO for KB: return matrix for time index itime
+        # The matrix can be in memory already or read from file on the spot
+        values = np.full(self.shape[1:], itime, self.dtype)
+        return values[slices[1:]]
 
 
 def _read_grid(fn, logger=None):
@@ -306,10 +326,10 @@ def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
     grid.zf.all_values[:, grid._land] = 0.0
     grid.ho.all_values[grid.ho.all_values == 0.0] = grid.ho.fill_value
     grid.hn.all_values[grid.hn.all_values == 0.0] = grid.hn.fill_value
-    grid.ho.attrs['_time_varying'] = False
-    grid.hn.attrs['_time_varying'] = False
-    grid.zc.attrs['_time_varying'] = False
-    grid.zf.attrs['_time_varying'] = False
+    grid.ho.attrs["_time_varying"] = False
+    grid.hn.attrs["_time_varying"] = False
+    grid.zc.attrs["_time_varying"] = False
+    grid.zf.attrs["_time_varying"] = False
 
 
 class Simulator(simulator.Simulator):
@@ -319,6 +339,15 @@ class Simulator(simulator.Simulator):
         _update_vertical_coordinates(self.domain.T, self.domain.dz)
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
+
+        matrices = TransportMatrices("file_%i", 12)
+        times = np.array(
+            [cftime.datetime(2000, imonth + 1, 16) for imonth in range(12)]
+        )
+        tm_ip = pygetm.input.TemporalInterpolation(matrices, 0, times, climatology=True)
+
+        self._current_tm = np.empty_like(tm_ip._current)  # placeholder; this should be a view of the sparse matrix data
+        self.input_manager._all_fields.append((tm_ip.name, tm_ip, self._current_tm))
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot)
