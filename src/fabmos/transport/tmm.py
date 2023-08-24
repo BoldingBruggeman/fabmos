@@ -26,20 +26,20 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
         source: pygetm.output.operators.Base,
         grid: Optional[pygetm.domain.Grid],
         mapping: np.ndarray,
-        global_array: Optional[pygetm.core.Array] = None,
+        global_array: Optional[pygetm.core.Array] = None
     ):
         self._grid = grid
         self._slice = (mapping,)
         shape = source.shape[:-2] + (grid.ny, grid.nx)
-        z = None
+        self._z = None
         if source.ndim > 2:
-            z = CENTERS if source.shape[0] == grid.nz else INTERFACES
+            self._z = CENTERS if source.shape[0] == grid.nz else INTERFACES
             self._slice = (slice(None),) + self._slice
-        dims = pygetm.output.operators.grid2dims(grid, z)
+        dims = pygetm.output.operators.grid2dims(grid, self._z)
         expression = f"{self.__class__.__name__}({source.expression})"
         super().__init__(source, shape=shape, dims=dims, expression=expression)
         self.values.fill(self.fill_value)
-        self._global_array = None if global_array is None else global_array.values
+        self._global_values = None if global_array is None else global_array.values
 
     def get(
         self,
@@ -47,11 +47,11 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
         slice_spec: Tuple[int, ...] = (),
     ) -> npt.ArrayLike:
         compressed_values = self._source.get()
-        if self._global_array is not None:
+        if self._global_values is not None:
             if out is None:
-                return self._global_array
+                return self._global_values
             else:
-                out[slice_spec] = self._global_array
+                out[slice_spec] = self._global_values
                 return out[slice_spec]
         self.values[self._slice] = compressed_values[..., 0, :]
         return super().get(out, slice_spec)
@@ -64,7 +64,9 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
     def coords(self):
         global_x = self._grid.lon if self._grid.domain.spherical else self._grid.x
         global_y = self._grid.lat if self._grid.domain.spherical else self._grid.y
-        for c, g in zip(self._source.coords, (global_x, global_y, None)):
+        global_z = self._grid.zc if self._z == CENTERS else self._grid.zf
+        globals_arrays = (global_x, global_y, global_z)
+        for c, g in zip(self._source.coords, globals_arrays):
             yield CompressedToFullGrid(c, self._grid, self._slice[-1], g)
 
 
@@ -75,10 +77,7 @@ def _read_grid(fn, logger=None):
         phony_dims="sort",
     )
     if rank == 0 and logger:
-        logger.info(
-                f"Reading grid information from: {fn}"
-        )
-
+        logger.info(f"Reading grid information from: {fn}")
 
     bathy = np.asarray(ds["bathy"], dtype=int)
     ideep = np.asarray(ds["ideep"], dtype=int)
@@ -167,27 +166,24 @@ def _mapping_arrays(
     return nlp, indx, counts, offsets
 
 
-def create_domain(path: str, logger = None) -> pygetm.domain.Domain:
-
-    bathy, ideep, lon, lat, z, dz = _read_grid(path, logger = logger)
+def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
+    bathy, ideep, lon, lat, z, dz = _read_grid(path, logger=logger)
     print("shapes: bathy, lon, lat: ", bathy.shape, lon.shape, lat.shape)
 
-    # If x,y coordinates are effectively 1D, reshape them to reflect that
+    # If x,y coordinates are effectively 1D, transpose latitude to ensure
+    # its singleton dimension comes last (x)
     if lon.shape[0] == 1 and lat.shape[0] == 1:
-        lon = lon[0, :]
-        lat = lat[0, :]
+        lat = lat.T
 
     mask_hz = ideep != 0
-    lon, lat, ideep = np.broadcast_arrays(lon[np.newaxis, :], lat[:, np.newaxis], ideep)
+    lon, lat, ideep = np.broadcast_arrays(lon, lat, ideep)
+    H = dz.sum(axis=0)
 
     # Squeeze out columns with only land. This maps the horizontal from 2D to 1D
     lon_packed = lon[mask_hz]
     lat_packed = lat[mask_hz]
     ideep_packed = ideep[mask_hz]
-
-    # find depth variable
-    H = np.sum(dz[:,:,:], axis=0)
-    H_packed = np.sum(dz[:,:,:], axis=0)[mask_hz]
+    H_packed = H[mask_hz]
 
     # Simple subdomain division along x dimension
     tiling = pygetm.parallel.Tiling(nrow=1, ncol=_comm.size, comm=_comm)
@@ -222,6 +218,7 @@ def create_domain(path: str, logger = None) -> pygetm.domain.Domain:
     domain.nwet_tot = nwets_cum[-1]
     offset = domain.offsets[domain.tiling.rank]
     domain.tmm_slice = slice(offset, offset + domain.nwet)
+    domain.dz = dz[:, np.newaxis, mask_hz]
 
     if domain.tiling.rank == 0:
         tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1)
@@ -232,12 +229,15 @@ def create_domain(path: str, logger = None) -> pygetm.domain.Domain:
             nz,
             lon=lon,
             lat=lat,
-            mask=ideep > 0,
+            mask=np.where(mask_hz, 1, 0),
             H=H,
             spherical=True,
             tiling=tiling,
         )
         full_domain.initialize(pygetm.BAROCLINIC)
+        _update_vertical_coordinates(full_domain.T, dz)
+
+        # By default, transform compressed fields to original 3D domain on output
         tf = functools.partial(
             CompressedToFullGrid, grid=full_domain.T, mapping=mask_hz
         )
@@ -293,10 +293,32 @@ def create_domain(path: str, logger = None) -> pygetm.domain.Domain:
     return pygetm.domain.create_spherical(lon=lon, lat=lat, mask=1, H=H, nz=15)
 
 
+def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
+    slc_loc, slc_glob, _, _ = grid.domain.tiling.subdomain2slices()
+    grid.ho.values[slc_loc] = dz[slc_glob]
+    grid.hn.values[slc_loc] = dz[slc_glob]
+    grid.zf.all_values.fill(0.0)
+    grid.zf.all_values[1:, ...] = -grid.hn.all_values.cumsum(axis=0)
+    grid.zc.all_values[...] = 0.5 * (
+        grid.zf.all_values[:-1, :, :] + grid.zf.all_values[1:, :, :]
+    )
+    grid.zc.all_values[:, grid._land] = 0.0
+    grid.zf.all_values[:, grid._land] = 0.0
+    grid.ho.all_values[grid.ho.all_values == 0.0] = grid.ho.fill_value
+    grid.hn.all_values[grid.hn.all_values == 0.0] = grid.hn.fill_value
+    grid.ho.attrs['_time_varying'] = False
+    grid.hn.attrs['_time_varying'] = False
+    grid.zc.attrs['_time_varying'] = False
+    grid.zf.attrs['_time_varying'] = False
+
+
 class Simulator(simulator.Simulator):
     def __init__(self, domain: pygetm.domain.Domain, fabm_config: str = "fabm.yaml"):
         super().__init__(domain, fabm_config)
         self.tmm_logger = self.logger.getChild("tmm")
+        _update_vertical_coordinates(self.domain.T, self.domain.dz)
+        if self.domain.glob and self.domain.glob is not self.domain:
+            _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot)
