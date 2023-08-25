@@ -11,10 +11,21 @@ FABM_CONFIG = dict(
     )
 )
 
+TMM_matrix_config = {
+    "matrix_type": "periodic",
+    #    "path": ".",
+    "path": "/data/kb/OceanICU/MITgcm_2.8deg/Matrix5/TMs",
+    "constant": {"Ae_fname": "matrix_nocorrection_01.mat", "Ai_fname": "matrix_nocorrection_01.mat"},
+    #"periodic": {"Ae_template": "Ae_%02d", "Ai_template": "Ai_%02d", "num_periods": 12},
+    "periodic": {"Ae_template": "matrix_nocorrection_%02d.mat", "Ai_template": "matrix_nocorrection_%02d.dat", "num_periods": 12, "base_number": 1},
+    "time_dependent": {},
+}
+
 grid_file = "./MITgcm_2.8deg/grid.mat"
 domain = fabmos.transport.tmm.create_domain(grid_file)
 
-sim = fabmos.transport.tmm.Simulator(domain, FABM_CONFIG)
+#fabmos.transport.tmm.tmm_matrix_config(TMM_matrix_config)
+sim = fabmos.transport.tmm.Simulator(domain, TMM_matrix_config, FABM_CONFIG)
 
 out = sim.output_manager.add_netcdf_file(
     "output.nc", interval=datetime.timedelta(days=1)

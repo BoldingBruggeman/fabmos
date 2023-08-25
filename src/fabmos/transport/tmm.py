@@ -1,6 +1,9 @@
 import sys
+import os
 import functools
 from typing import Optional, Tuple
+
+from scipy import sparse
 
 import xarray as xr
 import numpy as np
@@ -19,6 +22,8 @@ rank = _comm.Get_rank()
 
 verbose = True
 use_root = True
+
+matrix_types = ("periodic", "time_dependent", "constant")
 
 
 class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
@@ -71,23 +76,59 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
             yield CompressedToFullGrid(c, self._grid, self._slice[-1], g)
 
 
-class TransportMatrices(pygetm.input.LazyArray):
-    def __init__(self, template: str, ntime: int):
-        # here you open one of the transport matrix files (e.g., template % 0)
-        # to determine the number of data points n and the matrix data type dtype
-        n = 2000
+class TransportMatrix(pygetm.input.LazyArray):
+    def __init__(self, file_list: list, splits: np.ndarray,  name: str, logger = None):
+        if logger: logger.info(f"Initializing {name} arrays")
         dtype = float  # should be based on dtype used in .mat file
-        name = template  # some human readable name for the data (all time points)
-        self._n = n
-        super().__init__((ntime, n), dtype, name)
+        self._file_list = file_list
+        self._splits = splits
+        N = None if len(file_list)  == 1 else len(file_list)
+        if logger: logger.debug(f"Number of matrices: {N} and matrix size {splits[-1]}x{splits[-1]}")
+        if logger: logger.debug(f"Reading from: {file_list[0]}")
+        #JB
+        #self.A = self._new_tmm_matrix(file_list[0])
+        super().__init__((N, splits[-1]), dtype, name)
 
     def __getitem__(self, slices) -> np.ndarray:
         assert isinstance(slices[0], (int, np.integer))
         itime = slices[0]
-        # TODO for KB: return matrix for time index itime
-        # The matrix can be in memory already or read from file on the spot
+        self.A = self._new_tmm_matrix(self._file_list[itime])
         values = np.full(self.shape[1:], itime, self.dtype)
         return values[slices[1:]]
+
+    def _new_tmm_matrix(self, fn: str) -> sparse.spmatrix:
+        if rank == 0:
+            ds = h5py.File(fn, "r")
+            Aexp, M, N = self._master_matrix(ds)
+            assert N == self._splits[-1]
+            d = [Aexp[self._splits[i] : self._splits[i + 1], :] for i in range(size)]
+        else:
+            d = None
+
+        A = _comm.scatter(d, root=0)
+        A.tocsr()
+        return A
+
+    def _master_matrix(ds, verbose=False):
+        Aexp_data = np.asarray(ds["Aexp"]["data"])
+        Aexp_ir = np.asarray(ds["Aexp"]["ir"])
+        Aexp_jc = np.asarray(ds["Aexp"]["jc"])
+
+        Aexp = sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc))
+        Aexp.tocsr()
+        M, N = Aexp.shape
+        assert M == N
+        if True:
+            print(
+                "Master matrix: ",
+                M,
+                N,
+                len(Aexp.data),
+                len(Aexp.indices),
+                len(Aexp.indptr),
+                Aexp.has_sorted_indices,
+            )
+        return Aexp, M, N
 
 
 def _read_grid(fn, logger=None):
@@ -188,7 +229,6 @@ def _mapping_arrays(
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     bathy, ideep, lon, lat, z, dz = _read_grid(path, logger=logger)
-    print("shapes: bathy, lon, lat: ", bathy.shape, lon.shape, lat.shape)
 
     # If x,y coordinates are effectively 1D, transpose latitude to ensure
     # its singleton dimension comes last (x)
@@ -282,37 +322,6 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
 
     return domain
 
-    nprof, ib, ie = _profile_indices(ideep, verbose=verbose)
-    nlp, indx, counts, offsets = _mapping_arrays(nprof, ib, ie, verbose=verbose)
-    sys.exit()
-
-    # Jorn
-    # Here is what I've done - using counts, and offsets variables:
-    # Similar code for other exchanges
-    if False:
-        if rank == 0:
-            a = np.empty(ncol)
-            for i in range(size):
-                a[offsets[i] : offsets[i + 1]] = i + 1
-        else:
-            a = None
-
-        # Send portion of global array - a - to all
-        b = np.empty(offsets[rank + 1] - offsets[rank])
-        sendbuf = [a, counts, offsets[0:-1], MPI.DOUBLE]
-        _comm.Scatterv(sendbuf, b)
-
-        b[:] = b[:] + 1
-
-        # root receives local arrays and store in global
-        recvbuf = [a, counts, offsets[0:-1], MPI.DOUBLE]
-        _comm.Gatherv(b, recvbuf)
-
-    lon = np.arange(0.0, 10.0, 0.5)
-    lat = np.arange(10.0, 40.0, 0.5)
-    return pygetm.domain.create_spherical(lon=lon, lat=lat, mask=1, H=H, nz=15)
-
-
 def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
     slc_loc, slc_glob, _, _ = grid.domain.tiling.subdomain2slices()
     grid.ho.values[slc_loc] = dz[slc_glob]
@@ -333,26 +342,83 @@ def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
 
 
 class Simulator(simulator.Simulator):
-    def __init__(self, domain: pygetm.domain.Domain, fabm_config: str = "fabm.yaml"):
+    def __init__(
+        self,
+        domain: pygetm.domain.Domain,
+        tmm_config: dict,
+        fabm_config: str = "fabm.yaml",
+    ):
         super().__init__(domain, fabm_config)
-        self.tmm_logger = self.logger.getChild("tmm")
+        self.tmm_logger = self.logger.getChild("TMM")
+        self.tmm_logger.info(f"Initializing TMM component")
         _update_vertical_coordinates(self.domain.T, self.domain.dz)
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
 
-        matrices = TransportMatrices("file_%i", 12)
+        self._tmm_matrix_config(tmm_config)
+        split = np.append(self.domain.offsets, self.domain.nwet_tot)
+        Ae_matrices = TransportMatrix(self._matrix_paths_Ae, split, "Ae", logger = self.tmm_logger)
+        Ai_matrices = TransportMatrix(self._matrix_paths_Ai, split, "Ai", logger = self.tmm_logger)
         times = np.array(
             [cftime.datetime(2000, imonth + 1, 16) for imonth in range(12)]
         )
-        tm_ip = pygetm.input.TemporalInterpolation(matrices, 0, times, climatology=True)
+        self._current_Ae = pygetm.input.TemporalInterpolation(
+            Ae_matrices, 0, times, climatology=True
+        )
+        self._current_Ai = pygetm.input.TemporalInterpolation(
+            Ai_matrices, 0, times, climatology=True
+        )
+        #JB
+        sys.exit()
 
-        self._current_tm = np.empty_like(tm_ip._current)  # placeholder; this should be a view of the sparse matrix data
-        self.input_manager._all_fields.append((tm_ip.name, tm_ip, self._current_tm))
+        self.input_manager._all_fields.append(
+            (self._current_Ae.name, self._current_Ae, self._current_Ae)
+        )
+        self.input_manager._all_fields.append(
+            (self._current_Ai.name, self._current_Ai, self._current_Ai)
+        )
+#        tm_ip = pygetm.input.TemporalInterpolation(matrices, 0, times, climatology=True)
+
+    def _tmm_matrix_config(self, config: dict):
+        assert config["matrix_type"] in matrix_types
+        assert config["path"]
+
+        if config["matrix_type"] == "constant":
+            constant = config["constant"]
+            assert constant["Ae_fname"]
+            assert constant["Ai_fname"]
+            self._matrix_paths_Ae = list(os.path.join(config["path"], constant["Ae_fname"]))
+            self._matrix_paths_Ai = list(os.path.join(config["path"], constant["Ai_fname"]))
+        if config["matrix_type"] == "periodic":
+            periodic = config["periodic"]
+            assert periodic["num_periods"] > 0
+            assert periodic["Ae_template"]
+            if "base_number" in periodic:
+                offset = periodic["base_number"]
+            else:
+                offset = 0
+            self._matrix_paths_Ae = [
+                os.path.join(
+                    config["path"],
+                    periodic["Ae_template"] % (i + offset),
+                )
+                for i in range(periodic["num_periods"])
+            ]
+            self._matrix_paths_Ai = [
+                os.path.join(
+                    config["path"],
+                    periodic["Ai_template"] % (i + offset),
+                )
+                for i in range(periodic["num_periods"])
+            ]
+
+        if config["matrix_type"] == "time_dependent":
+            print("time varying TMM matrices not implemented yet - except for periodic")
+            sys.exit()
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot)
         for tracer in self.tracers:
-            print(tracer.name)
             self.domain.tiling.comm.Allgatherv(
                 [tracer.values.T[self.domain.wet_loc], MPI.DOUBLE],
                 (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
