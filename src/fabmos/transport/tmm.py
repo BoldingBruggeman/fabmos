@@ -3,7 +3,7 @@ import os
 import functools
 from typing import Optional, Tuple
 
-from scipy import sparse
+import scipy.sparse
 
 import xarray as xr
 import numpy as np
@@ -124,53 +124,66 @@ class TransportMatrix(pygetm.input.LazyArray):
         offsets: np.ndarray,
         counts: np.ndarray,
         rank: int,
+        comm: MPI.Comm,
         logger=None,
     ):
         if logger:
             logger.info(f"Initializing {name} arrays")
         self._file_list = file_list
+        self._group_name = name
+
+        # Obtain global sparse array indices and data type
+        # Currently these are determined by reading the first global sparse matrix,
+        # but in the future, they could might be read directly from file if the arrays
+        # are stored (or have been transformed to) CSR format.
+        mat1 = self._master_matrix(file_list[0], name)
+        indptr = mat1.indptr
+        indices = mat1.indices
+        dtype = mat1.dtype.newbyteorder("=")
+
+        # Collect information for MPI scatter of sparse array data
+        # For this, we need arrays with sparse data offsets and counts for every rank
+        self._comm = comm
         self._counts = []
         self._offsets = []
-        mat1 = self._master_matrix(file_list[0], name)
-        istart = mat1.indptr[offsets[rank]]
-        istop = mat1.indptr[offsets[rank] + counts[rank]]
-        self.indices = np.asarray(mat1.indices[istart:istop])
-        istoprow = offsets[rank] + counts[rank]
-        self.indptr = np.asarray(mat1.indptr[offsets[rank] : istoprow + 1])
-        self.indptr -= self.indptr[0]
         ioffset = 0
         for o, c in zip(offsets, counts):
             self._offsets.append(ioffset)
-            self._counts.append(mat1.indptr[o + c] - mat1.indptr[o])
+            self._counts.append(indptr[o + c] - indptr[o])
             ioffset += self._counts[-1]
-        shape = (istop - istart,)
+
+        # Get global sparse array indices
+        istartrow = offsets[rank]
+        istoprow = istartrow + counts[rank]
+        self.indices = np.asarray(indices[indptr[istartrow] : indptr[istoprow]])
+        self.indptr = np.asarray(indptr[istartrow : istoprow + 1])
+        self.indptr -= self.indptr[0]
+        self.dense_shape = (counts[rank], counts.sum())
+
+        shape = (self.indices.size,)
         if len(file_list) > 1:
             shape = (len(file_list),) + shape
-        self._name = name
-        self.dense_shape = (counts[rank], counts.sum())
-        super().__init__(shape, mat1.dtype.newbyteorder("="), name)
+        super().__init__(shape, dtype, name)
 
     def __getitem__(self, slices) -> np.ndarray:
-        assert isinstance(slices[0], (int, np.integer))
-        itime = slices[0] if len(self._file_list) > 1 else 0
+        itime = 0 if len(self._file_list) == 1 else slices[0]
+        assert isinstance(itime, (int, np.integer))
         if rank == 0:
-            d = self._master_matrix(
-                self._file_list[itime], self._name
-            ).data.newbyteorder("=")
+            d = self._master_matrix(self._file_list[itime]).data.newbyteorder("=")
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
-        _comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
+        self._comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
         return values[slices[1:]] if len(self._file_list) > 1 else values[slices]
 
-    @staticmethod
-    def _master_matrix(fn: str, name, verbose=False):
+    def _master_matrix(self, fn: str, verbose=False) -> scipy.sparse.csr_array:
         with h5py.File(fn) as ds:
-            Aexp_data = ds[name]["data"]
-            Aexp_ir = ds[name]["ir"]
-            Aexp_jc = ds[name]["jc"]
+            group = ds[self._group_name]
+            Aexp_data = group["data"]
+            Aexp_ir = group["ir"]
+            Aexp_jc = group["jc"]
             shape = (Aexp_jc.size - 1, Aexp_jc.size - 1)
-            Aexp = sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
+            Aexp = scipy.sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
         Aexp.tocsr()
         M, N = Aexp.shape
         assert M == N
@@ -186,8 +199,8 @@ class TransportMatrix(pygetm.input.LazyArray):
             )
         return Aexp
 
-    def create_sparse_array(self):
-        return sparse.csr_array(
+    def create_sparse_array(self) -> scipy.sparse.csr_array:
+        return scipy.sparse.csr_array(
             (
                 np.empty((self.shape[-1],), self.dtype),
                 self.indices,
@@ -429,6 +442,7 @@ class Simulator(simulator.Simulator):
             self.domain.offsets,
             self.domain.counts,
             self.domain.tiling.rank,
+            self.domain.tiling.comm,
             logger=self.tmm_logger,
         )
         Aimp_src = TransportMatrix(
@@ -437,6 +451,7 @@ class Simulator(simulator.Simulator):
             self.domain.offsets,
             self.domain.counts,
             self.domain.tiling.rank,
+            self.domain.tiling.comm,
             logger=self.tmm_logger,
         )
         self.Aexp = Aexp_src.create_sparse_array()
