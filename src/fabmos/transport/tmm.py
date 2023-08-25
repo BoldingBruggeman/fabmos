@@ -152,7 +152,7 @@ class TransportMatrix(pygetm.input.LazyArray):
             self._counts.append(indptr[o + c] - indptr[o])
             ioffset += self._counts[-1]
 
-        # Get global sparse array indices
+        # Get local sparse array indices
         istartrow = offsets[rank]
         istoprow = istartrow + counts[rank]
         self.indices = np.asarray(indices[indptr[istartrow] : indptr[istoprow]])
