@@ -17,7 +17,7 @@ TMM_matrix_config = {
     "path": "/data/kb/OceanICU/MITgcm_2.8deg/Matrix5/TMs",
     "constant": {"Ae_fname": "matrix_nocorrection_01.mat", "Ai_fname": "matrix_nocorrection_01.mat"},
     #"periodic": {"Ae_template": "Ae_%02d", "Ai_template": "Ai_%02d", "num_periods": 12},
-    "periodic": {"Ae_template": "matrix_nocorrection_%02d.mat", "Ai_template": "matrix_nocorrection_%02d.dat", "num_periods": 12, "base_number": 1},
+    "periodic": {"Ae_template": "matrix_nocorrection_%02d.mat", "Ai_template": "matrix_nocorrection_%02d.mat", "num_periods": 12, "base_number": 1},
     "time_dependent": {},
 }
 

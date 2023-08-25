@@ -26,6 +26,42 @@ use_root = True
 matrix_types = ("periodic", "time_dependent", "constant")
 
 
+
+class MatArray(pygetm.input.LazyArray):
+    def __init__(self, path: str, name: str):
+        self.file = h5py.File(path)
+        if name not in self.file:
+            raise KeyError(f"Variable {name} not found in {path}."
+                           f" Available: {', '.join(self.file.keys())}")
+        self.var = self.file[name]
+        name = f"MatArray({path!r}, {name!r})"
+        super().__init__(self.var.shape, self.var.dtype, name)
+
+    def __getitem__(self, slices) -> np.ndarray:
+        return self.var[slices]
+
+def get_mat_array(path: str, name: str, grid_file: str) -> xr.DataArray:
+    """This routine should ultimately read .mat files in HDF5
+    as well as proprietary MATLAB formats"""
+    data = MatArray(path, name)
+    bathy, ideep, x, y, z, dz = _read_grid(grid_file)
+    dims = ['y', 'x']
+    coords = {}
+    coords['lon'] = xr.DataArray(x[0, :], dims=('x',))
+    coords['lat'] = xr.DataArray(y[0, :], dims=('y',))
+    print(data.shape)
+    assert data.shape[-1] == x.size
+    assert data.shape[-2] == y.size
+    if data.ndim > 2 and data.shape[-3] == dz.shape[0]:
+        z_if = np.zeros((dz.shape[0] + 1,) + dz.shape[1:], dz.dtype)
+        z_if[1:] = dz.cumsum(axis=0)
+        coords['zc'] = xr.DataArray(0.5 * (z_if[:-1, ...] + z_if[1:, ...]), dims=('z', 'y', 'x'))
+        dims.insert(0, 'z')
+    dims = [f"dim_{i}" for i in range(data.ndim - len(dims))] + dims
+    ar = xr.DataArray(data, coords=coords, dims=dims)
+    return ar
+
+
 class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
     def __init__(
         self,
@@ -77,44 +113,44 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
 
 
 class TransportMatrix(pygetm.input.LazyArray):
-    def __init__(self, file_list: list, splits: np.ndarray,  name: str, logger = None):
+    def __init__(self, file_list: list, name: str, offsets: np.ndarray, counts: np.ndarray, rank: int, logger = None):
         if logger: logger.info(f"Initializing {name} arrays")
-        dtype = float  # should be based on dtype used in .mat file
         self._file_list = file_list
-        self._splits = splits
-        N = None if len(file_list)  == 1 else len(file_list)
-        if logger: logger.debug(f"Number of matrices: {N} and matrix size {splits[-1]}x{splits[-1]}")
-        if logger: logger.debug(f"Reading from: {file_list[0]}")
-        #JB
-        #self.A = self._new_tmm_matrix(file_list[0])
-        super().__init__((N, splits[-1]), dtype, name)
+        self._counts = counts
+        self._offsets = offsets
+        mat1 = self._master_matrix(file_list[0], name)
+        istart = mat1.indptr[offsets[rank]]
+        istop = mat1.data.size if rank == offsets.size - 1 else mat1.indptr[offsets[rank + 1]]
+        self.indices = np.asarray(mat1.indices[istart:istop])
+        istoprow = offsets[rank] + counts[rank]
+        self.indptr = np.asarray(mat1.indptr[offsets[rank]:istoprow + 1])
+        self.indptr -= self.indptr[0]
+        shape = (istop - istart,)
+        if len(file_list) > 1:
+            shape = (len(file_list),) + shape
+        self._name = name
+        self.dense_shape = (counts[rank], counts.sum())
+        super().__init__(shape, mat1.dtype.newbyteorder("="), name)
 
     def __getitem__(self, slices) -> np.ndarray:
         assert isinstance(slices[0], (int, np.integer))
-        itime = slices[0]
-        self.A = self._new_tmm_matrix(self._file_list[itime])
-        values = np.full(self.shape[1:], itime, self.dtype)
-        return values[slices[1:]]
-
-    def _new_tmm_matrix(self, fn: str) -> sparse.spmatrix:
+        itime = slices[0] if len(self._file_list) > 1 else 0
         if rank == 0:
-            ds = h5py.File(fn, "r")
-            Aexp, M, N = self._master_matrix(ds)
-            assert N == self._splits[-1]
-            d = [Aexp[self._splits[i] : self._splits[i + 1], :] for i in range(size)]
+            d = self._master_matrix(self._file_list[itime], self._name).data.newbyteorder("=")
         else:
             d = None
+        values = np.empty((self.shape[-1],), self.dtype)
+        _comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
+        return values[slices[1:]] if len(self._file_list) > 1 else values[slices]
 
-        A = _comm.scatter(d, root=0)
-        A.tocsr()
-        return A
-
-    def _master_matrix(ds, verbose=False):
-        Aexp_data = np.asarray(ds["Aexp"]["data"])
-        Aexp_ir = np.asarray(ds["Aexp"]["ir"])
-        Aexp_jc = np.asarray(ds["Aexp"]["jc"])
-
-        Aexp = sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc))
+    @staticmethod
+    def _master_matrix(fn: str, name, verbose=False):
+        with h5py.File(fn) as ds:
+            Aexp_data = ds[name]["data"]
+            Aexp_ir = ds[name]["ir"]
+            Aexp_jc = ds[name]["jc"]
+            shape = (Aexp_jc.size - 1, Aexp_jc.size - 1)
+            Aexp = sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
         Aexp.tocsr()
         M, N = Aexp.shape
         assert M == N
@@ -123,12 +159,12 @@ class TransportMatrix(pygetm.input.LazyArray):
                 "Master matrix: ",
                 M,
                 N,
-                len(Aexp.data),
-                len(Aexp.indices),
-                len(Aexp.indptr),
+                Aexp.data.size,
+                Aexp.indices.size,
+                Aexp.indptr.size,
                 Aexp.has_sorted_indices,
             )
-        return Aexp, M, N
+        return Aexp
 
 
 def _read_grid(fn, logger=None):
@@ -356,9 +392,8 @@ class Simulator(simulator.Simulator):
             _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
 
         self._tmm_matrix_config(tmm_config)
-        split = np.append(self.domain.offsets, self.domain.nwet_tot)
-        Ae_matrices = TransportMatrix(self._matrix_paths_Ae, split, "Ae", logger = self.tmm_logger)
-        Ai_matrices = TransportMatrix(self._matrix_paths_Ai, split, "Ai", logger = self.tmm_logger)
+        Ae_matrices = TransportMatrix(self._matrix_paths_Ae, "Aexp", self.domain.offsets, self.domain.counts, self.domain.tiling.rank, logger = self.tmm_logger)
+        Ai_matrices = TransportMatrix(self._matrix_paths_Ai, "Aimp", self.domain.offsets, self.domain.counts, self.domain.tiling.rank, logger = self.tmm_logger)
         times = np.array(
             [cftime.datetime(2000, imonth + 1, 16) for imonth in range(12)]
         )
@@ -368,14 +403,13 @@ class Simulator(simulator.Simulator):
         self._current_Ai = pygetm.input.TemporalInterpolation(
             Ai_matrices, 0, times, climatology=True
         )
-        #JB
-        sys.exit()
-
+        self.Aexp = sparse.csr_array((np.empty((Ae_matrices.shape[-1],), Ae_matrices.dtype), Ae_matrices.indices, Ae_matrices.indptr), Ae_matrices.dense_shape)
+        self.Aimp = sparse.csr_array((np.empty((Ai_matrices.shape[-1],), Ai_matrices.dtype), Ai_matrices.indices, Ai_matrices.indptr), Ai_matrices.dense_shape)
         self.input_manager._all_fields.append(
-            (self._current_Ae.name, self._current_Ae, self._current_Ae)
+            (self._current_Ae.name, self._current_Ae, self.Aexp.data)
         )
         self.input_manager._all_fields.append(
-            (self._current_Ai.name, self._current_Ai, self._current_Ai)
+            (self._current_Ai.name, self._current_Ai, self.Aimp.data)
         )
 #        tm_ip = pygetm.input.TemporalInterpolation(matrices, 0, times, climatology=True)
 
