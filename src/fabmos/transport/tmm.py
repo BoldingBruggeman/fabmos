@@ -184,20 +184,7 @@ class TransportMatrix(pygetm.input.LazyArray):
             Aexp_jc = group["jc"]
             shape = (Aexp_jc.size - 1, Aexp_jc.size - 1)
             Aexp = scipy.sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
-        Aexp.tocsr()
-        M, N = Aexp.shape
-        assert M == N
-        if True:
-            print(
-                "Master matrix: ",
-                M,
-                N,
-                Aexp.data.size,
-                Aexp.indices.size,
-                Aexp.indptr.size,
-                Aexp.has_sorted_indices,
-            )
-        return Aexp
+        return Aexp.tocsr()
 
     def create_sparse_array(self) -> scipy.sparse.csr_array:
         return scipy.sparse.csr_array(
