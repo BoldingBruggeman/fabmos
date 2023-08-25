@@ -129,19 +129,20 @@ class TransportMatrix(pygetm.input.LazyArray):
         if logger:
             logger.info(f"Initializing {name} arrays")
         self._file_list = file_list
-        self._counts = counts
-        self._offsets = offsets
+        self._counts = []
+        self._offsets = []
         mat1 = self._master_matrix(file_list[0], name)
         istart = mat1.indptr[offsets[rank]]
-        istop = (
-            mat1.data.size
-            if rank == offsets.size - 1
-            else mat1.indptr[offsets[rank + 1]]
-        )
+        istop = mat1.indptr[offsets[rank] + counts[rank]]
         self.indices = np.asarray(mat1.indices[istart:istop])
         istoprow = offsets[rank] + counts[rank]
         self.indptr = np.asarray(mat1.indptr[offsets[rank] : istoprow + 1])
         self.indptr -= self.indptr[0]
+        ioffset = 0
+        for o, c in zip(offsets, counts):
+            self._offsets.append(ioffset)
+            self._counts.append(mat1.indptr[o + c] - mat1.indptr[o])
+            ioffset += self._counts[-1]
         shape = (istop - istart,)
         if len(file_list) > 1:
             shape = (len(file_list),) + shape
