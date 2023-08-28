@@ -404,6 +404,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
             map_input_to_grid, indices=local_indices, global_shape=mask_hz.shape
         )
     )
+    domain._grid_file = path
 
     if domain.tiling.rank == 0:
         tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1)
@@ -506,10 +507,10 @@ class Simulator(simulator.Simulator):
         )
         self.Aexp = Aexp_src.create_sparse_array()
         self.Aimp = Aimp_src.create_sparse_array()
-        times = climatology_times()
+        self._matrix_times = climatology_times()
         if Aexp_src.ndim == 2:
             Aexp_tip = pygetm.input.TemporalInterpolation(
-                Aexp_src, 0, times, climatology=True
+                Aexp_src, 0, self._matrix_times, climatology=True
             )
             self.input_manager._all_fields.append(
                 (Aexp_tip.name, Aexp_tip, self.Aexp.data)
@@ -518,13 +519,15 @@ class Simulator(simulator.Simulator):
             self.Aexp.data[:] = Aexp_src
         if Aimp_src.ndim == 2:
             Aimp_tip = pygetm.input.TemporalInterpolation(
-                Aimp_src, 0, times, climatology=True
+                Aimp_src, 0, self._matrix_times, climatology=True
             )
             self.input_manager._all_fields.append(
                 (Aimp_tip.name, Aimp_tip, self.Aimp.data)
             )
         else:
             self.Aimp.data[:] = Aimp_src
+
+        self.load_environment()
 
     def _tmm_matrix_config(self, config: dict):
         assert config["matrix_type"] in matrix_types
@@ -578,3 +581,52 @@ class Simulator(simulator.Simulator):
 
             # Copy updated tracer values back to authoratitive array
             tracer.values.T[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
+
+    def load_environment(self):
+        root = os.path.dirname(self.domain._grid_file)
+
+        def _get_variable(path: str, varname: str, **kwargs) -> pygetm.core.Array:
+            array = self.domain.T.array(**kwargs)
+            src = get_mat_array(
+                path,
+                varname,
+                self.domain._grid_file,
+                times=self._matrix_times,
+            )
+            array.set(src, on_grid=pygetm.input.OnGrid.ALL, climatology=True)
+            return array
+
+        self.temp = _get_variable(
+            os.path.join(root, "GCM/Theta_gcm.mat"),
+            "Tgcm",
+            z=CENTERS,
+            name="temp",
+            units="degrees_Celsius",
+            long_name="temperature",
+            fabm_standard_name="temperature"
+        )
+        self.salt = _get_variable(
+            os.path.join(root, "GCM/Salt_gcm.mat"),
+            "Sgcm",
+            z=CENTERS,
+            name="salt",
+            units="PSU",
+            long_name="salinity",
+            fabm_standard_name="practical_salinity"
+        )
+        self.wind = _get_variable(
+            os.path.join(root, "BiogeochemData/wind_speed.mat"),
+            "windspeed",
+            name="wind",
+            units="m s-1",
+            long_name="wind speed",
+            fabm_standard_name="wind_speed",
+        )
+        self.fice = _get_variable(
+            os.path.join(root, "BiogeochemData/ice_fraction.mat"),
+            "Fice",
+            name="ice",
+            units="1",
+            long_name="ice cover",
+            fabm_standard_name="ice_area_fraction",
+        )
