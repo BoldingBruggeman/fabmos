@@ -1,7 +1,7 @@
 import sys
 import os
 import functools
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Iterable
 
 import scipy.sparse
 
@@ -42,28 +42,80 @@ class MatArray(pygetm.input.LazyArray):
         return self.var[slices]
 
 
-def get_mat_array(path: str, name: str, grid_file: str) -> xr.DataArray:
+def get_mat_array(
+    path: str, name: str, grid_file: str, times: Optional[npt.ArrayLike] = None
+) -> xr.DataArray:
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
     data = MatArray(path, name)
     bathy, ideep, x, y, z, dz = _read_grid(grid_file)
     dims = ["y", "x"]
     coords = {}
-    coords["lon"] = xr.DataArray(x[0, :], dims=("x",))
-    coords["lat"] = xr.DataArray(y[0, :], dims=("y",))
-    print(data.shape)
+    coords["lon"] = xr.DataArray(x[0, :], dims=("x",), attrs=dict(units="degrees_east"))
+    coords["lat"] = xr.DataArray(
+        y[0, :], dims=("y",), attrs=dict(units="degrees_north")
+    )
     assert data.shape[-1] == x.size
     assert data.shape[-2] == y.size
     if data.ndim > 2 and data.shape[-3] == dz.shape[0]:
         z_if = np.zeros((dz.shape[0] + 1,) + dz.shape[1:], dz.dtype)
         z_if[1:] = dz.cumsum(axis=0)
         coords["zc"] = xr.DataArray(
-            0.5 * (z_if[:-1, ...] + z_if[1:, ...]), dims=("z", "y", "x")
+            0.5 * (z_if[:-1, ...] + z_if[1:, ...]),
+            dims=("z", "y", "x"),
+            attrs=dict(standard_name="depth"),
         )
         dims.insert(0, "z")
+    if times is not None:
+        assert len(times) == data.shape[0]
+        dims.insert(0, "time")
+        coords["time"] = times
     dims = [f"dim_{i}" for i in range(data.ndim - len(dims))] + dims
-    ar = xr.DataArray(data, coords=coords, dims=dims)
-    return ar
+    return xr.DataArray(data, coords=coords, dims=dims)
+
+
+def map_input_to_grid(
+    value: xr.DataArray,
+    target: pygetm.core.Array,
+    global_shape: Tuple[int],
+    indices: Iterable[np.ndarray],
+) -> Optional[xr.DataArray]:
+    indices = tuple(indices)
+    if value.shape[-2:] != global_shape:
+        return
+
+    # First select the region (x and y slice) that encompasses all points
+    # in the local subdomain
+    region_slices = tuple([slice(ind.min(), ind.max() + 1) for ind in indices])
+    local_shape = value.shape[:-2] + tuple([s.stop - s.start for s in region_slices])
+    indices = tuple([ind - ind.min() for ind in indices])
+    s_region = pygetm.input.Slice(
+        pygetm.input._as_lazyarray(value),
+        shape=local_shape,
+        passthrough=range(value.ndim - 2),
+    )
+    src_slices = (slice(None),) * (value.ndim - 2) + region_slices
+    tgt_slices = (slice(None),) * (value.ndim - 2)
+    s_region._slices.append((src_slices, tgt_slices))
+
+    local_shape = value.shape[:-2] + (1,) + indices[0].shape
+    s = pygetm.input.Slice(
+        s_region,
+        shape=local_shape,
+        passthrough=range(value.ndim - 2),
+    )
+    src_slices = (slice(None),) * (value.ndim - 2) + indices
+    tgt_slices = (slice(None),) * (value.ndim - 2) + (0, slice(None))
+    s._slices.append((src_slices, tgt_slices))
+    s.passthrough_own_slices = False
+    alldims = frozenset(value.dims[-2:])
+    coords = {}
+    for n, c in value.coords.items():
+        if not alldims.intersection(c.dims):
+            coords[n] = c
+    return xr.DataArray(
+        s, dims=value.dims, coords=coords, attrs=value.attrs, name=s.name
+    )
 
 
 class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
@@ -345,6 +397,13 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     offset = domain.offsets[domain.tiling.rank]
     domain.tmm_slice = slice(offset, offset + domain.nwet)
     domain.dz = dz[:, np.newaxis, mask_hz]
+    global_indices = np.indices(ideep.shape)
+    local_indices = [i[mask_hz][slc_glob[-1]] for i in global_indices]
+    domain.input_grid_mappers.append(
+        functools.partial(
+            map_input_to_grid, indices=local_indices, global_shape=mask_hz.shape
+        )
+    )
 
     if domain.tiling.rank == 0:
         tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1)
@@ -408,6 +467,10 @@ def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
     grid.zf.attrs["_time_varying"] = False
 
 
+def climatology_times():
+    return [cftime.datetime(2000, imonth + 1, 16) for imonth in range(12)]
+
+
 class Simulator(simulator.Simulator):
     def __init__(
         self,
@@ -443,9 +506,7 @@ class Simulator(simulator.Simulator):
         )
         self.Aexp = Aexp_src.create_sparse_array()
         self.Aimp = Aimp_src.create_sparse_array()
-        times = np.array(
-            [cftime.datetime(2000, imonth + 1, 16) for imonth in range(12)]
-        )
+        times = climatology_times()
         if Aexp_src.ndim == 2:
             Aexp_tip = pygetm.input.TemporalInterpolation(
                 Aexp_src, 0, times, climatology=True
