@@ -74,13 +74,11 @@ def get_mat_array(
     return xr.DataArray(data, coords=coords, dims=dims)
 
 
-def map_input_to_grid(
+def map_input_to_compressed_grid(
     value: xr.DataArray,
-    target: pygetm.core.Array,
     global_shape: Tuple[int],
     indices: Iterable[np.ndarray],
 ) -> Optional[xr.DataArray]:
-    indices = tuple(indices)
     if value.shape[-2:] != global_shape:
         return
 
@@ -88,16 +86,17 @@ def map_input_to_grid(
     # in the local subdomain
     region_slices = tuple([slice(ind.min(), ind.max() + 1) for ind in indices])
     local_shape = value.shape[:-2] + tuple([s.stop - s.start for s in region_slices])
-    indices = tuple([ind - ind.min() for ind in indices])
     s_region = pygetm.input.Slice(
         pygetm.input._as_lazyarray(value),
         shape=local_shape,
         passthrough=range(value.ndim - 2),
     )
     src_slices = (slice(None),) * (value.ndim - 2) + region_slices
-    tgt_slices = (slice(None),) * (value.ndim - 2)
+    tgt_slices = (slice(None),) * value.ndim
     s_region._slices.append((src_slices, tgt_slices))
 
+    # In the extracted region, index the individual points
+    indices = tuple([ind - ind.min() for ind in indices])
     local_shape = value.shape[:-2] + (1,) + indices[0].shape
     s = pygetm.input.Slice(
         s_region,
@@ -108,11 +107,14 @@ def map_input_to_grid(
     tgt_slices = (slice(None),) * (value.ndim - 2) + (0, slice(None))
     s._slices.append((src_slices, tgt_slices))
     s.passthrough_own_slices = False
+
+    # Keep only coordinates without any horizontal coordinate dimension (x, y)
     alldims = frozenset(value.dims[-2:])
     coords = {}
     for n, c in value.coords.items():
         if not alldims.intersection(c.dims):
             coords[n] = c
+
     return xr.DataArray(
         s, dims=value.dims, coords=coords, attrs=value.attrs, name=s.name
     )
@@ -401,7 +403,9 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     local_indices = [i[mask_hz][slc_glob[-1]] for i in global_indices]
     domain.input_grid_mappers.append(
         functools.partial(
-            map_input_to_grid, indices=local_indices, global_shape=mask_hz.shape
+            map_input_to_compressed_grid,
+            indices=local_indices,
+            global_shape=mask_hz.shape,
         )
     )
     domain._grid_file = path
@@ -603,7 +607,7 @@ class Simulator(simulator.Simulator):
             name="temp",
             units="degrees_Celsius",
             long_name="temperature",
-            fabm_standard_name="temperature"
+            fabm_standard_name="temperature",
         )
         self.salt = _get_variable(
             os.path.join(root, "GCM/Salt_gcm.mat"),
@@ -612,7 +616,7 @@ class Simulator(simulator.Simulator):
             name="salt",
             units="PSU",
             long_name="salinity",
-            fabm_standard_name="practical_salinity"
+            fabm_standard_name="practical_salinity",
         )
         self.wind = _get_variable(
             os.path.join(root, "BiogeochemData/wind_speed.mat"),
