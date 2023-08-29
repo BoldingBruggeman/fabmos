@@ -243,14 +243,20 @@ class TransportMatrix(pygetm.input.LazyArray):
         return values[slices[1:]] if len(self._file_list) > 1 else values[slices]
 
     def _master_matrix(self, fn: str, verbose=False) -> scipy.sparse.csr_array:
-        with h5py.File(fn) as ds:
-            group = ds[self._group_name]
-            Aexp_data = group["data"]
-            Aexp_ir = group["ir"]
-            Aexp_jc = group["jc"]
-            shape = (Aexp_jc.size - 1, Aexp_jc.size - 1)
-            Aexp = scipy.sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
-        return Aexp.tocsr()
+        try:
+            # MATLAB >= 7.3 format (HDF5)
+            with h5py.File(fn) as ds:
+                group = ds[self._group_name]
+                Aexp_data = group["data"]
+                Aexp_ir = group["ir"]
+                Aexp_jc = group["jc"]
+                shape = (Aexp_jc.size - 1, Aexp_jc.size - 1)
+                A = scipy.sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
+        except OSError:
+            # MATLAB < 7.3 format
+            vardict = scipy.io.loadmat(fn)
+            A = vardict[self._group_name]
+        return A.tocsr()
 
     def create_sparse_array(self) -> scipy.sparse.csr_array:
         return scipy.sparse.csr_array(
