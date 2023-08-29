@@ -31,19 +31,19 @@ class MatArray(pygetm.input.LazyArray):
         transpose = False
         try:
             # First try MATLAB 7.3 format (=HDF5)
-            self.file = h5py.File(path)
+            vardict = self.file = h5py.File(path)
         except Exception:
             # Now try older MATLAB formats
-            self.file = scipy.io.loadmat(path)
+            vardict = scipy.io.loadmat(path)
             transpose = True
 
-        if name not in self.file:
+        if name not in vardict:
             raise KeyError(
                 f"Variable {name} not found in {path}."
-                f" Available: {', '.join(self.file.keys())}"
+                f" Available: {', '.join(vardict.keys())}"
             )
 
-        self.var = self.file[name]
+        self.var = vardict[name]
         if transpose:
             self.var = self.var.T
 
