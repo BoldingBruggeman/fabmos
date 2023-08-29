@@ -28,13 +28,25 @@ matrix_types = ("periodic", "time_dependent", "constant")
 
 class MatArray(pygetm.input.LazyArray):
     def __init__(self, path: str, name: str):
-        self.file = h5py.File(path)
+        transpose = False
+        try:
+            # First try MATLAB 7.3 format (=HDF5)
+            self.file = h5py.File(path)
+        except Exception:
+            # Now try older MATLAB formats
+            self.file = scipy.io.loadmat(path)
+            transpose = True
+
         if name not in self.file:
             raise KeyError(
                 f"Variable {name} not found in {path}."
                 f" Available: {', '.join(self.file.keys())}"
             )
+
         self.var = self.file[name]
+        if transpose:
+            self.var = self.var.T
+
         name = f"MatArray({path!r}, {name!r})"
         super().__init__(self.var.shape, self.var.dtype, name)
 
@@ -252,21 +264,15 @@ class TransportMatrix(pygetm.input.LazyArray):
 
 
 def _read_grid(fn, logger=None):
-    ds = xr.open_dataset(
-        fn,
-        engine="h5netcdf",
-        phony_dims="sort",
-    )
     if rank == 0 and logger:
         logger.info(f"Reading grid information from: {fn}")
-
-    bathy = np.asarray(ds["bathy"], dtype=int)
-    ideep = np.asarray(ds["ideep"], dtype=int)
-    x = np.asarray(ds["x"])
-    y = np.asarray(ds["y"])
-    z = np.asarray(ds["z"])
-    dz = np.asarray(ds["dz"])
-
+    with h5py.File(fn) as ds:
+        bathy = np.asarray(ds["bathy"], dtype=int)
+        ideep = np.asarray(ds["ideep"], dtype=int)
+        x = np.asarray(ds["x"])
+        y = np.asarray(ds["y"])
+        z = np.asarray(ds["z"])
+        dz = np.asarray(ds["dz"])
     return bathy, ideep, x, y, z, dz
 
 
