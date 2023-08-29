@@ -35,10 +35,10 @@ TMM_matrix_config = {
     "time_dependent": {},
 }
 
-
 parser = argparse.ArgumentParser(
-    description="TMM python implementation.",
-    epilog="Implemented by BB in the OceanICU EU funded project.",
+    description=f"Python implementation of the Transport Matrix Method (TMM) - Khatiwala et. al (2005)",
+    prog=f'mpiexec -np <N> {sys.argv[0]}',
+    epilog="Implemented by BB in the OceanICU Horizon Europe project (Grant No.101083922).",
 )
 parser.add_argument(
     "path",
