@@ -589,11 +589,29 @@ class Simulator(simulator.Simulator):
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot)
         for tracer in self.tracers:
+            # packed_values is the packed TMM-style array with tracer values
             self.domain.tiling.comm.Allgatherv(
                 [tracer.values.T[self.domain.wet_loc], MPI.DOUBLE],
                 (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
             )
-            # packed_values is the packed TMM-style array with tracer values
+
+            # do the explicit step
+            vtmp = self.Aexp.dot(packed_values)
+            i = self.domain.offsets[rank]
+            j = self.domain.offsets[rank] + self.domain.counts[rank]
+            print(rank, vtmp.shape, i, j, len(self.domain.wet_loc), len(self.domain.wet_loc), tracer.values.T.shape, packed_values.shape)
+            if False:
+                packed_values[i:j] = vtmp
+
+            if False:
+                # everything back to all processes
+                self.domain.tiling.comm.Allgatherv(
+                    [tracer.values.T[self.domain.wet_loc], MPI.DOUBLE],
+                    (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
+                )
+                # do the implicit step
+                vtmp = self.Aimp.dot(packed_values)
+                packed_values[i:j] = vtmp
 
             # Copy updated tracer values back to authoratitive array
             tracer.values.T[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]

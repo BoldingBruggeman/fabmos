@@ -54,6 +54,10 @@ domain = fabmos.transport.tmm.create_domain(os.path.join(args.path, "grid.mat"))
 
 sim = fabmos.transport.tmm.Simulator(domain, TMM_matrix_config, FABM_CONFIG)
 
+sim['tracer_c'].fill(0)
+#sim['tracer_c'].values[:, (domain.T.lon.values > 320) & (domain.T.lon.values < 330) & (domain.T.lat.values > 50) & (domain.T.lat.values < 55)] = 10.
+sim['tracer_c'].values[:, (domain.T.lon.values > 300) & (domain.T.lon.values < 330) & (domain.T.lat.values > 30) & (domain.T.lat.values < 55)] = 1.
+
 out = sim.output_manager.add_netcdf_file(
     "output.nc", interval=datetime.timedelta(days=1)
 )
@@ -61,6 +65,7 @@ out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_avera
 
 # 1 hour time step for BGC, 12 hour for transport
 sim.start(datetime.datetime(2000, 1, 1), 12 * 3600.0, nstep_transport=1)
-while sim.time < datetime.datetime(2001, 1, 1):
+#while sim.time < datetime.datetime(2001, 1, 1):
+while sim.time < datetime.datetime(2000, 2, 1):
     sim.advance()
 sim.finish()
