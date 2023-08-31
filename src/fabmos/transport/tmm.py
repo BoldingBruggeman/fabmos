@@ -258,10 +258,11 @@ class TransportMatrix(pygetm.input.LazyArray):
         n = A_jc.size - 1
 
         if order is None:
-            order = np.arange(n)
+            old2newindex = np.arange(n)
         else:
             assert order.shape == (n,)
-            A_ir = order[A_ir]
+            old2newindex = np.argsort(order)
+            A_ir = old2newindex[A_ir]
 
         # Determine CSC to CSR mapping
         items_per_row = np.zeros((n,), dtype=int)
@@ -276,10 +277,10 @@ class TransportMatrix(pygetm.input.LazyArray):
         for icol, (colstart, colstop) in enumerate(zip(A_jc[:-1], A_jc[1:])):
             irows = A_ir[colstart:colstop]
             newi = indptr[irows] + current_items_per_row[irows]
-            indices[newi] = order[icol]
+            indices[newi] = old2newindex[icol]
             self.index_map[newi] = np.arange(colstart, colstop)
             current_items_per_row[irows] += 1
-        if True:
+        if False:
             assert (current_items_per_row == (indptr[1:] - indptr[:-1])).all()
             A_data = np.random.random(indices.shape)
             csr = scipy.sparse.csr_array((A_data[self.index_map], indices, indptr))
@@ -442,7 +443,19 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     ideep_loc[slc_loc] = ideep_packed[np.newaxis, :][slc_glob]
 
     # 3D mask for local subdomain
-    domain.wet_loc = np.arange(1, nz + 1)[:, np.newaxis, np.newaxis] <= ideep_loc
+    assert ideep_loc.shape[0] == 1
+    domain.wet_loc = np.arange(1, nz + 1) <= ideep_loc[0, :, np.newaxis]
+
+    wet_glob = np.arange(1, nz + 1) <= ideep[:, :, np.newaxis]  # y, x, z
+    wet_glob_tmm_order = np.moveaxis(wet_glob, 2, 0)  # z, y, x
+    nwet_glob = wet_glob.sum()
+    order = np.empty_like(wet_glob, dtype=int)
+    order_tmm = np.moveaxis(order, 2, 0)
+    order_tmm[wet_glob_tmm_order] = np.arange(nwet_glob)
+    order = order[wet_glob]
+    assert order.shape == (nwet_glob,)
+    assert (np.sort(order) == np.arange(nwet_glob)).all()
+    domain.order = order
 
     domain.nwet = ideep_loc.sum()
     domain.counts = np.empty(domain.tiling.n, dtype=int)
@@ -554,6 +567,7 @@ class Simulator(simulator.Simulator):
             self.domain.tiling.rank,
             self.domain.tiling.comm,
             logger=self.tmm_logger,
+            order=domain.order,
         )
         Aimp_src = TransportMatrix(
             self._matrix_paths_Ai,
@@ -563,6 +577,7 @@ class Simulator(simulator.Simulator):
             self.domain.tiling.rank,
             self.domain.tiling.comm,
             logger=self.tmm_logger,
+            order=domain.order,
         )
         self.Aexp = Aexp_src.create_sparse_array()
         self.Aimp = Aimp_src.create_sparse_array()
@@ -632,9 +647,11 @@ class Simulator(simulator.Simulator):
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
         for tracer in self.tracers:
+            tracer_tmm = tracer.values[:, 0, :].T
+
             # packed_values is the packed TMM-style array with tracer values
             self.domain.tiling.comm.Allgatherv(
-                [tracer.values[self.domain.wet_loc], MPI.DOUBLE],
+                [tracer_tmm[self.domain.wet_loc], MPI.DOUBLE],
                 (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
             )
 
@@ -648,15 +665,20 @@ class Simulator(simulator.Simulator):
             if False:
                 # everything back to all processes
                 self.domain.tiling.comm.Allgatherv(
-                    [tracer.values.T[self.domain.wet_loc], MPI.DOUBLE],
-                    (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
+                    packed_values[self.domain.tmm_slice],
+                    (
+                        packed_values,
+                        self.domain.counts,
+                        self.domain.offsets,
+                        MPI.DOUBLE,
+                    ),
                 )
                 # do the implicit step
                 vtmp = self.Aimp.dot(packed_values)
                 packed_values[self.domain.tmm_slice] = vtmp
 
             # Copy updated tracer values back to authoratitive array
-            tracer.values[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
+            tracer_tmm[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
 
     def load_environment(self):
         root = os.path.dirname(self.domain._grid_file)
