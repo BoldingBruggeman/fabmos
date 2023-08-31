@@ -1,7 +1,8 @@
 import sys
 import os
 import functools
-from typing import Optional, Tuple, Iterable
+import datetime
+from typing import Optional, Tuple, Iterable, Union
 
 import scipy.sparse
 
@@ -60,7 +61,7 @@ def get_mat_array(
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
     data = MatArray(path, name)
-    bathy, ideep, x, y, z, dz, deltaT = _read_grid(grid_file)
+    bathy, ideep, x, y, z, dz, delta_t = _read_grid(grid_file)
     dims = ["y", "x"]
     coords = {}
     coords["lon"] = xr.DataArray(x[0, :], dims=("x",), attrs=dict(units="degrees_east"))
@@ -193,6 +194,8 @@ class TransportMatrix(pygetm.input.LazyArray):
         comm: MPI.Comm,
         order: Optional[np.ndarray] = None,
         logger=None,
+        power=1,
+        scale_factor=1.0,
     ):
         if logger:
             logger.info(f"Initializing {name} arrays")
@@ -205,9 +208,10 @@ class TransportMatrix(pygetm.input.LazyArray):
         # are stored (or have been transformed to) CSR format.
         indices, indptr, dtype = self._get_matrix_metadata(file_list[0], order=order)
 
-        # Collect information for MPI scatter of sparse array data
+        # Collect information for MPI scatter of sparse array indices and data
         # For this, we need arrays with sparse data offsets and counts for every rank
         self._comm = comm
+        self._rank = rank
         self._counts = []
         self._offsets = []
         ioffset = 0
@@ -223,6 +227,8 @@ class TransportMatrix(pygetm.input.LazyArray):
         self.indptr = np.asarray(indptr[istartrow : istoprow + 1])
         self.indptr -= self.indptr[0]
         self.dense_shape = (counts[rank], counts.sum())
+        self._power = power
+        self._scale_factor = scale_factor
 
         shape = (self.indices.size,)
         if len(file_list) > 1:
@@ -232,13 +238,21 @@ class TransportMatrix(pygetm.input.LazyArray):
     def __getitem__(self, slices) -> np.ndarray:
         itime = 0 if len(self._file_list) == 1 else slices[0]
         assert isinstance(itime, (int, np.integer))
-        if rank == 0:
+        if self._rank == 0:
             d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
+            if self._power != 1:
+                csr = scipy.sparse.csr_matrix(
+                    (d, self.global_indices, self.global_indptr)
+                )
+                d = (csr**self._power).data
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
         self._comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
-        return values[slices[1:]] if len(self._file_list) > 1 else values[slices]
+        result = values[slices[1:]] if len(self._file_list) > 1 else values[slices]
+        if self._scale_factor != 1.0:
+            result *= self._scale_factor
+        return result
 
     def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
         try:
@@ -280,6 +294,8 @@ class TransportMatrix(pygetm.input.LazyArray):
             indices[newi] = old2newindex[icol]
             self.index_map[newi] = np.arange(colstart, colstop)
             current_items_per_row[irows] += 1
+        self.global_indices = indices
+        self.global_indptr = indptr
         if False:
             assert (current_items_per_row == (indptr[1:] - indptr[:-1])).all()
             A_data = np.random.random(indices.shape)
@@ -318,14 +334,14 @@ def _read_grid(fn, logger=None):
     if rank == 0 and logger:
         logger.info(f"Reading grid information from: {fn}")
     with h5py.File(fn) as ds:
-        deltaT = np.asarray(ds["deltaT"]).item()
         bathy = np.asarray(ds["bathy"], dtype=int)
         ideep = np.asarray(ds["ideep"], dtype=int)
         x = np.asarray(ds["x"])
         y = np.asarray(ds["y"])
         z = np.asarray(ds["z"])
         dz = np.asarray(ds["dz"])
-    return bathy, ideep, x, y, z, dz, deltaT
+        delta_t = np.asarray(ds["deltaT"][0, 0])
+    return bathy, ideep, x, y, z, dz, delta_t
 
 
 def _profile_indices(
@@ -406,7 +422,7 @@ def _mapping_arrays(
 
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
-    bathy, ideep, lon, lat, z, dz, deltaT = _read_grid(path, logger=logger)
+    bathy, ideep, lon, lat, z, dz, delta_t = _read_grid(path, logger=logger)
 
     # If x,y coordinates are effectively 1D, transpose latitude to ensure
     # its singleton dimension comes last (x)
@@ -478,6 +494,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
         )
     )
     domain._grid_file = path
+    domain._delta_t = delta_t
 
     if domain.tiling.rank == 0:
         tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1)
@@ -560,7 +577,7 @@ class Simulator(simulator.Simulator):
             _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
 
         self._tmm_matrix_config(tmm_config)
-        Aexp_src = TransportMatrix(
+        self.Aexp_src = TransportMatrix(
             self._matrix_paths_Ae,
             "Aexp",
             self.domain.offsets,
@@ -570,7 +587,7 @@ class Simulator(simulator.Simulator):
             logger=self.tmm_logger,
             order=domain.order,
         )
-        Aimp_src = TransportMatrix(
+        self.Aimp_src = TransportMatrix(
             self._matrix_paths_Ai,
             "Aimp",
             self.domain.offsets,
@@ -580,27 +597,23 @@ class Simulator(simulator.Simulator):
             logger=self.tmm_logger,
             order=domain.order,
         )
-        self.Aexp = Aexp_src.create_sparse_array()
-        self.Aimp = Aimp_src.create_sparse_array()
+        self.Aexp = self.Aexp_src.create_sparse_array()
+        self.Aimp = self.Aimp_src.create_sparse_array()
         self._matrix_times = climatology_times()
-        if Aexp_src.ndim == 2:
+        if self.Aexp_src.ndim == 2:
             Aexp_tip = pygetm.input.TemporalInterpolation(
-                Aexp_src, 0, self._matrix_times, climatology=True
+                self.Aexp_src, 0, self._matrix_times, climatology=True
             )
             self.input_manager._all_fields.append(
                 (Aexp_tip.name, Aexp_tip, self.Aexp.data)
             )
-        else:
-            self.Aexp.data[:] = Aexp_src
-        if Aimp_src.ndim == 2:
+        if self.Aimp_src.ndim == 2:
             Aimp_tip = pygetm.input.TemporalInterpolation(
-                Aimp_src, 0, self._matrix_times, climatology=True
+                self.Aimp_src, 0, self._matrix_times, climatology=True
             )
             self.input_manager._all_fields.append(
                 (Aimp_tip.name, Aimp_tip, self.Aimp.data)
             )
-        else:
-            self.Aimp.data[:] = Aimp_src
 
         self.load_environment()
 
@@ -645,30 +658,51 @@ class Simulator(simulator.Simulator):
             print("time varying TMM matrices not implemented yet - except for periodic")
             sys.exit()
 
+    def start(
+        self,
+        time: Union[cftime.datetime, datetime.datetime],
+        timestep: float,
+        nstep_transport: int = 1,
+        report: datetime.timedelta = datetime.timedelta(days=1),
+    ):
+        dt = nstep_transport * timestep
+        nphys = dt / self.domain._delta_t
+        self.tmm_logger.info(
+            f"Using transport timestep of {dt} s, which is {nphys} *"
+            f" the original online timestep of {self.domain._delta_t} s."
+        )
+        assert (nphys % 1.0) < 1e-8
+        self.Aexp_src._scale_factor = dt
+        self.Aimp_src._power = int(nphys)
+        if self.Aexp_src.ndim == 1:
+            self.Aexp.data[:] = self.Aexp_src
+        if self.Aimp_src.ndim == 1:
+            self.Aimp.data[:] = self.Aimp_src
+        super().start(time, timestep, nstep_transport, report)
+
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
         rcvbuf = (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE)
+        assert self.Aexp_src._scale_factor == timestep
+        assert self.Aexp_src._power == 1
         for tracer in self.tracers:
             tracer_tmm = tracer.values[:, 0, :].T
 
             # packed_values is the packed TMM-style array with tracer values
-            self.domain.tiling.comm.Allgatherv(
-                [tracer_tmm[self.domain.wet_loc], MPI.DOUBLE], rcvbuf
-            )
+            self.domain.tiling.comm.Allgatherv(tracer_tmm[self.domain.wet_loc], rcvbuf)
 
             # do the explicit step
             vtmp = self.Aexp.dot(packed_values)
-            vtmp *= timestep
             packed_values[self.domain.tmm_slice] += vtmp
 
             # everything back to all processes
             self.domain.tiling.comm.Allgatherv(MPI.IN_PLACE, rcvbuf)
 
             # do the implicit step
-            packed_values[self.domain.tmm_slice] = self.Aimp.dot(packed_values)
+            vtmp = self.Aimp.dot(packed_values)
 
             # Copy updated tracer values back to authoratitive array
-            tracer_tmm[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
+            tracer_tmm[self.domain.wet_loc] = vtmp
 
     def load_environment(self):
         root = os.path.dirname(self.domain._grid_file)
