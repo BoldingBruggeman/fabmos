@@ -60,7 +60,7 @@ def get_mat_array(
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
     data = MatArray(path, name)
-    bathy, ideep, x, y, z, dz = _read_grid(grid_file)
+    bathy, ideep, x, y, z, dz, deltaT = _read_grid(grid_file)
     dims = ["y", "x"]
     coords = {}
     coords["lon"] = xr.DataArray(x[0, :], dims=("x",), attrs=dict(units="degrees_east"))
@@ -318,13 +318,14 @@ def _read_grid(fn, logger=None):
     if rank == 0 and logger:
         logger.info(f"Reading grid information from: {fn}")
     with h5py.File(fn) as ds:
+        deltaT = np.asarray(ds["deltaT"]).item()
         bathy = np.asarray(ds["bathy"], dtype=int)
         ideep = np.asarray(ds["ideep"], dtype=int)
         x = np.asarray(ds["x"])
         y = np.asarray(ds["y"])
         z = np.asarray(ds["z"])
         dz = np.asarray(ds["dz"])
-    return bathy, ideep, x, y, z, dz
+    return bathy, ideep, x, y, z, dz, deltaT
 
 
 def _profile_indices(
@@ -405,7 +406,7 @@ def _mapping_arrays(
 
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
-    bathy, ideep, lon, lat, z, dz = _read_grid(path, logger=logger)
+    bathy, ideep, lon, lat, z, dz, deltaT = _read_grid(path, logger=logger)
 
     # If x,y coordinates are effectively 1D, transpose latitude to ensure
     # its singleton dimension comes last (x)
