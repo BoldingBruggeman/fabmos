@@ -398,8 +398,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     ideep_loc[slc_loc] = ideep_packed[np.newaxis, :][slc_glob]
 
     # 3D mask for local subdomain
-    # (already in nx,1,nz order as TMM needs z to be fastest varying)
-    domain.wet_loc = np.arange(1, nz + 1) <= ideep_loc.T[:, :, np.newaxis]
+    domain.wet_loc = np.arange(1, nz + 1)[:, np.newaxis, np.newaxis] <= ideep_loc
 
     domain.nwet = ideep_loc.sum()
     domain.counts = np.empty(domain.tiling.n, dtype=int)
@@ -587,21 +586,20 @@ class Simulator(simulator.Simulator):
             sys.exit()
 
     def transport(self, timestep: float):
-        packed_values = np.empty(self.domain.nwet_tot)
+        packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
         for tracer in self.tracers:
             # packed_values is the packed TMM-style array with tracer values
             self.domain.tiling.comm.Allgatherv(
-                [tracer.values.T[self.domain.wet_loc], MPI.DOUBLE],
+                [tracer.values[self.domain.wet_loc], MPI.DOUBLE],
                 (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
             )
 
             # do the explicit step
             vtmp = self.Aexp.dot(packed_values)
-            i = self.domain.offsets[rank]
-            j = self.domain.offsets[rank] + self.domain.counts[rank]
-            print(rank, vtmp.shape, i, j, len(self.domain.wet_loc), len(self.domain.wet_loc), tracer.values.T.shape, packed_values.shape)
-            if False:
-                packed_values[i:j] = vtmp
+            #print(rank, vtmp.shape, i, j, len(self.domain.wet_loc), len(self.domain.wet_loc), tracer.values.T.shape, packed_values.shape)
+            if True:
+                vtmp *= timestep
+                packed_values[self.domain.tmm_slice] += vtmp
 
             if False:
                 # everything back to all processes
@@ -611,10 +609,10 @@ class Simulator(simulator.Simulator):
                 )
                 # do the implicit step
                 vtmp = self.Aimp.dot(packed_values)
-                packed_values[i:j] = vtmp
+                packed_values[self.domain.tmm_slice] = vtmp
 
             # Copy updated tracer values back to authoratitive array
-            tracer.values.T[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
+            tracer.values[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
 
     def load_environment(self):
         root = os.path.dirname(self.domain._grid_file)
