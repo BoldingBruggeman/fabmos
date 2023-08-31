@@ -646,36 +646,25 @@ class Simulator(simulator.Simulator):
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
+        rcvbuf = (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE)
         for tracer in self.tracers:
             tracer_tmm = tracer.values[:, 0, :].T
 
             # packed_values is the packed TMM-style array with tracer values
             self.domain.tiling.comm.Allgatherv(
-                [tracer_tmm[self.domain.wet_loc], MPI.DOUBLE],
-                (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE),
+                [tracer_tmm[self.domain.wet_loc], MPI.DOUBLE], rcvbuf
             )
 
             # do the explicit step
             vtmp = self.Aexp.dot(packed_values)
-            # print(rank, vtmp.shape, i, j, len(self.domain.wet_loc), len(self.domain.wet_loc), tracer.values.T.shape, packed_values.shape)
-            if True:
-                vtmp *= timestep
-                packed_values[self.domain.tmm_slice] += vtmp
+            vtmp *= timestep
+            packed_values[self.domain.tmm_slice] += vtmp
 
-            if False:
-                # everything back to all processes
-                self.domain.tiling.comm.Allgatherv(
-                    packed_values[self.domain.tmm_slice],
-                    (
-                        packed_values,
-                        self.domain.counts,
-                        self.domain.offsets,
-                        MPI.DOUBLE,
-                    ),
-                )
-                # do the implicit step
-                vtmp = self.Aimp.dot(packed_values)
-                packed_values[self.domain.tmm_slice] = vtmp
+            # everything back to all processes
+            self.domain.tiling.comm.Allgatherv(MPI.IN_PLACE, rcvbuf)
+
+            # do the implicit step
+            packed_values[self.domain.tmm_slice] = self.Aimp.dot(packed_values)
 
             # Copy updated tracer values back to authoratitive array
             tracer_tmm[self.domain.wet_loc] = packed_values[self.domain.tmm_slice]
