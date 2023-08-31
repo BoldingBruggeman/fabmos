@@ -191,6 +191,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         counts: np.ndarray,
         rank: int,
         comm: MPI.Comm,
+        order: Optional[np.ndarray] = None,
         logger=None,
     ):
         if logger:
@@ -202,10 +203,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         # Currently these are determined by reading the first global sparse matrix,
         # but in the future, they could might be read directly from file if the arrays
         # are stored (or have been transformed to) CSR format.
-        mat1 = self._master_matrix(file_list[0], name)
-        indptr = mat1.indptr
-        indices = mat1.indices
-        dtype = mat1.dtype.newbyteorder("=")
+        indices, indptr, dtype = self._get_matrix_metadata(file_list[0], order=order)
 
         # Collect information for MPI scatter of sparse array data
         # For this, we need arrays with sparse data offsets and counts for every rank
@@ -229,34 +227,80 @@ class TransportMatrix(pygetm.input.LazyArray):
         shape = (self.indices.size,)
         if len(file_list) > 1:
             shape = (len(file_list),) + shape
-        super().__init__(shape, dtype, name)
+        super().__init__(shape, dtype.newbyteorder("="), name)
 
     def __getitem__(self, slices) -> np.ndarray:
         itime = 0 if len(self._file_list) == 1 else slices[0]
         assert isinstance(itime, (int, np.integer))
         if rank == 0:
-            d = self._master_matrix(self._file_list[itime]).data.newbyteorder("=")
+            d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
         self._comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
         return values[slices[1:]] if len(self._file_list) > 1 else values[slices]
 
-    def _master_matrix(self, fn: str, verbose=False) -> scipy.sparse.csr_array:
+    def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
         try:
             # MATLAB >= 7.3 format (HDF5)
             with h5py.File(fn) as ds:
                 group = ds[self._group_name]
-                Aexp_data = group["data"]
-                Aexp_ir = group["ir"]
-                Aexp_jc = group["jc"]
-                shape = (Aexp_jc.size - 1, Aexp_jc.size - 1)
-                A = scipy.sparse.csc_array((Aexp_data, Aexp_ir, Aexp_jc), shape)
+                A_ir = np.asarray(group["ir"], dtype=np.intp)
+                A_jc = np.asarray(group["jc"], dtype=np.intp)
+                dtype = group["data"].dtype
         except OSError:
             # MATLAB < 7.3 format
             vardict = scipy.io.loadmat(fn)
             A = vardict[self._group_name]
-        return A.tocsr()
+            A_ir = A.indices
+            A_jc = A.indptr
+            dtype = A.dtype
+        n = A_jc.size - 1
+
+        if order is None:
+            order = np.arange(n)
+        else:
+            assert order.shape == (n,)
+            A_ir = order[A_ir]
+
+        # Determine CSC to CSR mapping
+        items_per_row = np.zeros((n,), dtype=int)
+        np.add.at(items_per_row, A_ir, 1)
+
+        self.index_map = np.empty_like(A_ir)
+        indices = np.empty_like(A_ir)
+        indptr = np.empty_like(A_jc)
+        indptr[0] = 0
+        indptr[1:] = items_per_row.cumsum()
+        current_items_per_row = np.zeros_like(items_per_row)
+        for icol, (colstart, colstop) in enumerate(zip(A_jc[:-1], A_jc[1:])):
+            irows = A_ir[colstart:colstop]
+            newi = indptr[irows] + current_items_per_row[irows]
+            indices[newi] = order[icol]
+            self.index_map[newi] = np.arange(colstart, colstop)
+            current_items_per_row[irows] += 1
+        if True:
+            assert (current_items_per_row == (indptr[1:] - indptr[:-1])).all()
+            A_data = np.random.random(indices.shape)
+            csr = scipy.sparse.csr_array((A_data[self.index_map], indices, indptr))
+            csr2 = scipy.sparse.csc_array((A_data, A_ir, A_jc), (n, n)).tocsr()
+            assert csr.nnz == csr2.nnz
+            assert csr.shape == csr2.shape
+            assert (csr.indices == csr2.indices).all()
+            assert (csr.indptr == csr2.indptr).all()
+            assert (csr.data == csr2.data).all()
+        return indices, indptr, dtype
+
+    def _get_matrix_data(self, fn: str) -> np.ndarray:
+        try:
+            # MATLAB >= 7.3 format (HDF5)
+            with h5py.File(fn) as ds:
+                data = np.asarray(ds[self._group_name]["data"])
+        except OSError:
+            # MATLAB < 7.3 format
+            vardict = scipy.io.loadmat(fn)
+            data = vardict[self._group_name].data
+        return data[self.index_map]
 
     def create_sparse_array(self) -> scipy.sparse.csr_array:
         return scipy.sparse.csr_array(
@@ -596,7 +640,7 @@ class Simulator(simulator.Simulator):
 
             # do the explicit step
             vtmp = self.Aexp.dot(packed_values)
-            #print(rank, vtmp.shape, i, j, len(self.domain.wet_loc), len(self.domain.wet_loc), tracer.values.T.shape, packed_values.shape)
+            # print(rank, vtmp.shape, i, j, len(self.domain.wet_loc), len(self.domain.wet_loc), tracer.values.T.shape, packed_values.shape)
             if True:
                 vtmp *= timestep
                 packed_values[self.domain.tmm_slice] += vtmp
