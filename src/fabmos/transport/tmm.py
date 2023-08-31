@@ -569,15 +569,16 @@ def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
     grid.zf.attrs["_time_varying"] = False
 
 
-def climatology_times():
-    return [cftime.datetime(2000, imonth + 1, 16) for imonth in range(12)]
+def climatology_times(calendar="standard"):
+    return [cftime.datetime(2000, imonth + 1, 16, calendar=calendar) for imonth in range(12)]
 
 
 class Simulator(simulator.Simulator):
     def __init__(
         self,
         domain: pygetm.domain.Domain,
-        tmm_config: dict,
+        matrix_files: Iterable[str],
+        matrix_times: Iterable[Union[datetime.datetime, cftime.datetime]],
         fabm_config: str = "fabm.yaml",
     ):
         super().__init__(domain, fabm_config)
@@ -587,9 +588,9 @@ class Simulator(simulator.Simulator):
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
 
-        self._tmm_matrix_config(tmm_config)
+        #self._tmm_matrix_config(tmm_config)
         self.Aexp_src = TransportMatrix(
-            self._matrix_paths_Ae,
+            matrix_files,
             "Aexp",
             self.domain.offsets,
             self.domain.counts,
@@ -599,7 +600,7 @@ class Simulator(simulator.Simulator):
             order=domain.order,
         )
         self.Aimp_src = TransportMatrix(
-            self._matrix_paths_Ai,
+            matrix_files,
             "Aimp",
             self.domain.offsets,
             self.domain.counts,
@@ -610,7 +611,7 @@ class Simulator(simulator.Simulator):
         )
         self.Aexp = self.Aexp_src.create_sparse_array()
         self.Aimp = self.Aimp_src.create_sparse_array()
-        self._matrix_times = climatology_times()
+        self._matrix_times = matrix_times
         if self.Aexp_src.ndim == 2:
             Aexp_tip = pygetm.input.TemporalInterpolation(
                 self.Aexp_src, 0, self._matrix_times, climatology=True
