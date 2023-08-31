@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import cftime
 from mpi4py import MPI
+import mpi4py.util.dtlib
 import h5py
 
 import pygetm
@@ -206,7 +207,13 @@ class TransportMatrix(pygetm.input.LazyArray):
         # Currently these are determined by reading the first global sparse matrix,
         # but in the future, they could might be read directly from file if the arrays
         # are stored (or have been transformed to) CSR format.
-        indices, indptr, dtype = self._get_matrix_metadata(file_list[0], order=order)
+        self.global_indices = None
+        self.global_indptr = None
+        self.global_dtype = None
+        if rank == 0:
+            self._get_matrix_metadata(file_list[0], order=order)
+        dtype = comm.bcast(self.global_dtype)
+        indptr = comm.bcast(self.global_indptr)
 
         # Collect information for MPI scatter of sparse array indices and data
         # For this, we need arrays with sparse data offsets and counts for every rank
@@ -223,9 +230,13 @@ class TransportMatrix(pygetm.input.LazyArray):
         # Get local sparse array indices
         istartrow = offsets[rank]
         istoprow = istartrow + counts[rank]
-        self.indices = np.asarray(indices[indptr[istartrow] : indptr[istoprow]])
         self.indptr = np.asarray(indptr[istartrow : istoprow + 1])
         self.indptr -= self.indptr[0]
+        self.indices = np.empty((self.indptr[-1],), indptr.dtype)
+        mpi_dtype = mpi4py.util.dtlib.from_numpy_dtype(self.indices.dtype)
+        comm.Scatterv(
+            [self.global_indices, self._counts, self._offsets, mpi_dtype], self.indices
+        )
         self.dense_shape = (counts[rank], counts.sum())
         self._power = power
         self._scale_factor = scale_factor
@@ -296,6 +307,7 @@ class TransportMatrix(pygetm.input.LazyArray):
             current_items_per_row[irows] += 1
         self.global_indices = indices
         self.global_indptr = indptr
+        self.global_dtype = dtype
         if False:
             assert (current_items_per_row == (indptr[1:] - indptr[:-1])).all()
             A_data = np.random.random(indices.shape)
@@ -306,7 +318,6 @@ class TransportMatrix(pygetm.input.LazyArray):
             assert (csr.indices == csr2.indices).all()
             assert (csr.indptr == csr2.indptr).all()
             assert (csr.data == csr2.data).all()
-        return indices, indptr, dtype
 
     def _get_matrix_data(self, fn: str) -> np.ndarray:
         try:
