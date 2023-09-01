@@ -117,12 +117,9 @@ out = sim.output_manager.add_netcdf_file(
 out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_average=True)
 
 # 1 hour time step for BGC, 12 hour for transport
-start = datetime.datetime.strptime(args.start_time, "%Y-%m-%d %H:%M:%S")
-stop = datetime.datetime.strptime(args.stop_time, "%Y-%m-%d %H:%M:%S")
-sim.start(
-    cftime.datetime(start.year, start.month, start.day, calendar=args.calendar), 12 * 3600.0, nstep_transport=1
-)
+fmt = "%Y-%m-%d %H:%M:%S"
+sim.start(cftime.datetime.strptime(args.start_time, fmt, calendar=args.calendar), 12 * 3600.0, nstep_transport=1)
 
-while sim.time < cftime.datetime(stop.year, stop.month, stop.day, calendar=args.calendar):
+while sim.time < cftime.datetime.strptime(args.stop_time, fmt, calendar=args.calendar):
     sim.advance()
 sim.finish()
