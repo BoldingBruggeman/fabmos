@@ -65,7 +65,7 @@ def get_mat_array(
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
     data = MatArray(path, name)
-    bathy, ideep, x, y, z, dz, delta_t = _read_grid(grid_file)
+    bathy, ideep, x, y, z, dz, da, delta_t = _read_grid(grid_file)
     dims = ["y", "x"]
     coords = {}
     coords["lon"] = xr.DataArray(x[0, :], dims=("x",), attrs=dict(units="degrees_east"))
@@ -135,7 +135,7 @@ def map_input_to_compressed_grid(
     for n, c in value.coords.items():
         if not alldims.intersection(c.dims):
             coords[n] = c
-    
+
     return xr.DataArray(
         s, dims=value.dims, coords=coords, attrs=value.attrs, name=s.name
     )
@@ -274,7 +274,7 @@ class TransportMatrix(pygetm.input.LazyArray):
 
     def __array__(self, dtype=None) -> np.ndarray:
         assert len(self._file_list) == 1
-        return self[:] 
+        return self[:]
 
     def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
         try:
@@ -364,8 +364,9 @@ def _read_grid(fn: str, logger=None):
         y = np.asarray(ds["y"])
         z = np.asarray(ds["z"])
         dz = np.asarray(ds["dz"])
+        da = np.asarray(ds["da"])
         delta_t = np.asarray(ds["deltaT"][0, 0])
-    return bathy, ideep, x, y, z, dz, delta_t
+    return bathy, ideep, x, y, z, dz, da, delta_t
 
 
 def _read_config(fn: str) -> Mapping[str, Any]:
@@ -384,7 +385,7 @@ def _read_config(fn: str) -> Mapping[str, Any]:
 
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
-    bathy, ideep, lon, lat, z, dz, delta_t = _read_grid(path, logger=logger)
+    bathy, ideep, lon, lat, z, dz, da, delta_t = _read_grid(path, logger=logger)
 
     # If x,y coordinates are effectively 1D, transpose latitude to ensure
     # its singleton dimension comes last (x)
@@ -446,6 +447,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     offset = domain.offsets[domain.tiling.rank]
     domain.tmm_slice = slice(offset, offset + domain.nwet)
     domain.dz = dz[:, np.newaxis, mask_hz]
+    domain.da = da[0, np.newaxis, mask_hz]
     global_indices = np.indices(ideep.shape)
     local_indices = [i[mask_hz][slc_glob[-1]] for i in global_indices]
     domain.input_grid_mappers.append(
@@ -473,7 +475,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
             tiling=tiling,
         )
         full_domain.initialize(pygetm.BAROCLINIC)
-        _update_vertical_coordinates(full_domain.T, dz)
+        _update_coordinates(full_domain.T, dz, da[0, ...])
 
         # By default, transform compressed fields to original 3D domain on output
         tf = functools.partial(
@@ -501,7 +503,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     return domain
 
 
-def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
+def _update_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray, da: np.ndarray):
     slc_loc, slc_glob, _, _ = grid.domain.tiling.subdomain2slices()
     grid.ho.values[slc_loc] = dz[slc_glob]
     grid.hn.values[slc_loc] = dz[slc_glob]
@@ -518,6 +520,8 @@ def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
     grid.hn.attrs["_time_varying"] = False
     grid.zc.attrs["_time_varying"] = False
     grid.zf.attrs["_time_varying"] = False
+
+    grid.area.values[slc_loc] = da[slc_glob]
 
 
 def climatology_times(calendar="standard"):
@@ -538,9 +542,12 @@ class Simulator(simulator.Simulator):
         super().__init__(domain, fabm_config)
         self.tmm_logger = self.logger.getChild("TMM")
         self.tmm_logger.info(f"Initializing TMM component")
-        _update_vertical_coordinates(self.domain.T, self.domain.dz)
+        _update_coordinates(self.domain.T, self.domain.dz, self.domain.da)
         if self.domain.glob and self.domain.glob is not self.domain:
-            _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
+            _update_coordinates(self.domain.glob.T, self.domain.dz, self.domain.da)
+
+        self.domain.mask3d = domain.T.array(z=CENTERS, dtype=bool, fill=False)
+        self.domain.mask3d.values[:, 0, :] = self.domain.wet_loc.T
 
         root = os.path.dirname(self.domain._grid_file)
         config = _read_config(os.path.join(root, "config_data.mat"))
@@ -610,6 +617,7 @@ class Simulator(simulator.Simulator):
         timestep: float,
         transport_timestep: Optional[float] = None,
         report: datetime.timedelta = datetime.timedelta(days=1),
+        report_totals: Union[int, datetime.timedelta] = datetime.timedelta(days=10),
         profile: Optional[str] = None,
     ):
         dt = transport_timestep or timestep
@@ -623,7 +631,7 @@ class Simulator(simulator.Simulator):
                 f"The transport timestep of {dt} s must be an exact multiple"
                 f" of the original online timestep of {self.domain._delta_t} s"
             )
-                
+
         assert (nphys % 1.0) < 1e-8
         self.Aexp_src._scale_factor = dt
         self.Aimp_src._power = int(nphys)
@@ -631,7 +639,9 @@ class Simulator(simulator.Simulator):
             self.Aexp.data[:] = self.Aexp_src
         if self.Aimp_src.ndim == 1:
             self.Aimp.data[:] = self.Aimp_src
-        super().start(time, timestep, transport_timestep, report, profile)
+        super().start(
+            time, timestep, transport_timestep, report, report_totals, profile
+        )
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)

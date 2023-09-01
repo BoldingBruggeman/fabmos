@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Tuple, Sequence
 import timeit
 import pstats
 
@@ -48,6 +48,7 @@ class Simulator:
         timestep: float,
         transport_timestep: Optional[float] = None,
         report: datetime.timedelta = datetime.timedelta(days=1),
+        report_totals: Union[int, datetime.timedelta] = datetime.timedelta(days=10),
         profile: Optional[str] = None,
     ):
         if transport_timestep is None:
@@ -71,6 +72,9 @@ class Simulator:
         self.nstep_transport = nstep_transport
         self.istep = 0
         self.report = int(report.total_seconds() / timestep)
+        if isinstance(report_totals, datetime.timedelta):
+            report_totals = int(round(report_totals.total_seconds() / self.timestep))
+        self.report_totals = report_totals
 
         self.fabm.start(self.time)
         self.update_diagnostics()
@@ -112,6 +116,9 @@ class Simulator:
         self.radiation.update(self.time)
         self.fabm.update_sources(self.time)
 
+        if self.report_totals != 0 and self.istep % self.report_totals == 0:
+            self.report_domain_integrals()
+
     def transport(self, timestep: float):
         self.logger.debug(f"transport advancing to {self.time} (dt={timestep} s)")
 
@@ -128,3 +135,53 @@ class Simulator:
         nsecs = timeit.default_timer() - self._start_time
         self.logger.info(f"Time spent in main loop: {nsecs:.3f} s")
         self.output_manager.close(self.timestep * self.istep, self.time)
+
+    @property
+    def totals(
+        self,
+    ) -> Optional[Sequence[Tuple[pygetm.tracer.TracerTotal, float, float]]]:
+        """Global totals of tracers.
+
+        Returns:
+            A list with (tracer_total, total, mean) tuples on the root subdomains.
+            On non-root subdomains it returns None
+        """
+        unmasked = self.domain.T.mask != 0
+        total_volume = (self.domain.T.hn * self.domain.T.area).global_sum(
+            where=self.domain.mask3d
+        )
+        tracer_totals = [] if total_volume is not None else None
+        if self.fabm:
+            self.fabm.update_totals()
+        for tt in self.tracer_totals:
+            grid = tt.array.grid
+            total = tt.array * grid.area
+            if tt.scale_factor != 1.0:
+                total.all_values *= tt.scale_factor
+            if tt.offset != 0.0:
+                total.all_values += tt.offset * grid.area.all_values
+            if total.ndim == 3:
+                total.all_values *= grid.hn.all_values
+                total = total.global_sum(where=self.domain.mask3d)
+            else:
+                total = total.global_sum(where=unmasked)
+            if total is not None:
+                mean = (total / total_volume - tt.offset) / tt.scale_factor
+                tracer_totals.append((tt, total, mean))
+        return tracer_totals
+
+    def report_domain_integrals(self):
+        """Write totals of selected variables over the global domain
+        (those in :attr:`tracer_totals`) to the log.
+        """
+        tracer_totals = self.totals
+        if tracer_totals:
+            self.logger.info("Integrals over global domain:")
+            for tt, total, mean in tracer_totals:
+                ar = tt.array
+                long_name = tt.long_name if tt.long_name is not None else ar.long_name
+                units = tt.units if tt.units is not None else f"{ar.units} m3"
+                self.logger.info(
+                    f"  {long_name}: {total:.15e} {units}"
+                    f" (mean {ar.long_name}: {mean} {ar.units})"
+                )
