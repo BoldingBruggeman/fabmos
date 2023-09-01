@@ -19,14 +19,9 @@ FABM_CONFIG = dict(
 
 domain = fabmos.transport.tmm.create_domain(os.path.join(root, "grid.mat"))
 
-matrix_files = sorted(
-    glob.glob(os.path.join(root, "Matrix5/TMs/matrix_nocorrection_??.mat"))
-)
-matrix_times = fabmos.transport.tmm.climatology_times(calendar=calendar)
 sim = fabmos.transport.tmm.Simulator(
     domain,
-    matrix_files=matrix_files,
-    matrix_times=matrix_times,
+    calendar=calendar,
     fabm_config=FABM_CONFIG,
 )
 
@@ -35,7 +30,9 @@ out = sim.output_manager.add_netcdf_file(
 )
 out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_average=True)
 
-sim.start(cftime.datetime(2000, 1, 1, calendar=calendar), 12 * 3600.0, nstep_transport=1)
-while sim.time < cftime.datetime(2001, 1, 1, calendar=calendar):
+start = cftime.datetime(2000, 1, 1, calendar=calendar)
+stop = cftime.datetime(2001, 1, 1, calendar=calendar)
+sim.start(start, 12 * 3600.0, nstep_transport=1)
+while sim.time < stop:
     sim.advance()
 sim.finish()

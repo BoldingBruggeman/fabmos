@@ -42,11 +42,6 @@ parser.add_argument(
     help="integration stop time - 2001-01-01 00:00:00",
 )
 parser.add_argument(
-    "--matrix",
-    type=int,
-    default=1,
-)
-parser.add_argument(
     "--area",
     type=float,
     nargs=4,
@@ -90,16 +85,9 @@ TMM_matrix_config = {
 domain = fabmos.transport.tmm.create_domain(os.path.join(args.path, "grid.mat"))
 
 # calendar = "360_day"
-matrix_files = sorted(
-    glob.glob(
-        os.path.join(args.path, f"Matrix{args.matrix}/TMs/matrix_nocorrection_??.mat")
-    )
-)
-matrix_times = fabmos.transport.tmm.climatology_times(calendar=args.calendar)
 sim = fabmos.transport.tmm.Simulator(
     domain,
-    matrix_files=matrix_files,
-    matrix_times=matrix_times,
+    calendar=args.calendar,
     fabm_config=FABM_CONFIG,
 )
 sim["tracer_c"].fill(0)

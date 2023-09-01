@@ -2,7 +2,7 @@ import sys
 import os
 import functools
 import datetime
-from typing import Optional, Tuple, Iterable, Union
+from typing import Optional, Tuple, Iterable, Union, Mapping, Any
 
 import scipy.sparse
 
@@ -27,6 +27,7 @@ use_root = True
 
 matrix_types = ("periodic", "time_dependent", "constant")
 
+
 class MatArray(pygetm.input.LazyArray):
     def __init__(self, path: str, name: str):
         transpose = False
@@ -50,6 +51,9 @@ class MatArray(pygetm.input.LazyArray):
 
         name = f"MatArray({path!r}, {name!r})"
         super().__init__(self.var.shape, self.var.dtype, name)
+
+    def __array__(self, dtype=None) -> np.ndarray:
+        return np.asarray(self.var, dtype=dtype)
 
     def __getitem__(self, slices) -> np.ndarray:
         return self.var[slices]
@@ -95,21 +99,25 @@ def map_input_to_compressed_grid(
     if value.shape[-2:] != global_shape:
         return
 
+    region_slices = tuple([slice(ind.min(), ind.max() + 1) for ind in indices])
+    all_region_slices = (slice(None),) * (value.ndim - 2) + region_slices
+    indices = tuple([ind - ind.min() for ind in indices])
+
+    if isinstance(value, np.ndarray):
+        final_slices = (slice(None),) * (value.ndim - 2) + (np.newaxis,) + indices
+        return value[all_region_slices][final_slices]
+
     # First select the region (x and y slice) that encompasses all points
     # in the local subdomain
-    region_slices = tuple([slice(ind.min(), ind.max() + 1) for ind in indices])
     local_shape = value.shape[:-2] + tuple([s.stop - s.start for s in region_slices])
     s_region = pygetm.input.Slice(
         pygetm.input._as_lazyarray(value),
         shape=local_shape,
         passthrough=range(value.ndim - 2),
     )
-    src_slices = (slice(None),) * (value.ndim - 2) + region_slices
-    tgt_slices = (slice(None),) * value.ndim
-    s_region._slices.append((src_slices, tgt_slices))
+    s_region._slices.append((all_region_slices, (slice(None),) * value.ndim))
 
     # In the extracted region, index the individual points
-    indices = tuple([ind - ind.min() for ind in indices])
     local_shape = value.shape[:-2] + (1,) + indices[0].shape
     s = pygetm.input.Slice(
         s_region,
@@ -127,7 +135,7 @@ def map_input_to_compressed_grid(
     for n, c in value.coords.items():
         if not alldims.intersection(c.dims):
             coords[n] = c
-
+    
     return xr.DataArray(
         s, dims=value.dims, coords=coords, attrs=value.attrs, name=s.name
     )
@@ -264,6 +272,10 @@ class TransportMatrix(pygetm.input.LazyArray):
             result *= self._scale_factor
         return result
 
+    def __array__(self, dtype=None) -> np.ndarray:
+        assert len(self._file_list) == 1
+        return self[:] 
+
     def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
         try:
             # MATLAB >= 7.3 format (HDF5)
@@ -340,7 +352,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         )
 
 
-def _read_grid(fn, logger=None):
+def _read_grid(fn: str, logger=None):
     if rank == 0 and logger:
         logger.info(f"Reading grid information from: {fn}")
     if not os.path.isfile(fn):
@@ -354,6 +366,21 @@ def _read_grid(fn, logger=None):
         dz = np.asarray(ds["dz"])
         delta_t = np.asarray(ds["deltaT"][0, 0])
     return bathy, ideep, x, y, z, dz, delta_t
+
+
+def _read_config(fn: str) -> Mapping[str, Any]:
+    if not os.path.isfile(fn):
+        raise Exception(f"Configuration file {fn} does not exist")
+    config = {}
+    with h5py.File(fn) as ds:
+        for k in ds.keys():
+            v = np.squeeze(ds[k][...])
+            if v.dtype == "<u2":
+                v = bytes(v[:]).decode("utf16")
+            config[k] = v
+    for k in ("fixEmP", "rescaleForcing", "useAreaWeighting"):
+        config[k] = (config[k] != 0).any()
+    return config
 
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
@@ -494,15 +521,18 @@ def _update_vertical_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray):
 
 
 def climatology_times(calendar="standard"):
-    return [cftime.datetime(2000, imonth + 1, 16, calendar=calendar) for imonth in range(12)]
+    return [
+        cftime.datetime(2000, imonth + 1, 16, calendar=calendar) for imonth in range(12)
+    ]
 
 
 class Simulator(simulator.Simulator):
     def __init__(
         self,
         domain: pygetm.domain.Domain,
-        matrix_files: Iterable[str],
-        matrix_times: Iterable[Union[datetime.datetime, cftime.datetime]],
+        periodic_matrix: bool = True,
+        periodic_forcing: bool = True,
+        calendar: str = "standard",
         fabm_config: str = "fabm.yaml",
     ):
         super().__init__(domain, fabm_config)
@@ -512,10 +542,32 @@ class Simulator(simulator.Simulator):
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_vertical_coordinates(self.domain.glob.T, self.domain.dz)
 
-        #self._tmm_matrix_config(tmm_config)
+        root = os.path.dirname(self.domain._grid_file)
+        config = _read_config(os.path.join(root, "config_data.mat"))
+
+        Aexp_files = []
+        Aimp_files = []
+        if periodic_matrix:
+            matrix_times = climatology_times(calendar)
+            exp_base = config["explicitMatrixFileBase"]
+            imp_base = config["implicitMatrixFileBase"]
+            for imonth in range(1, 13):
+                Aexp_files.append(os.path.join(root, exp_base + f"_{imonth:02}.mat"))
+                Aimp_files.append(os.path.join(root, imp_base + f"_{imonth:02}.mat"))
+            Aexp_name = "Aexp"
+            Aimp_name = "Aimp"
+        else:
+            matrix_times = None
+            exp_base = config["explicitAnnualMeanMatrixFile"]
+            imp_base = config["implicitAnnualMeanMatrixFile"]
+            Aexp_files.append(os.path.join(root, exp_base + ".mat"))
+            Aimp_files.append(os.path.join(root, imp_base + ".mat"))
+            Aexp_name = "Aexpms"
+            Aimp_name = "Aimpms"
+
         self.Aexp_src = TransportMatrix(
-            matrix_files,
-            "Aexp",
+            Aexp_files,
+            Aexp_name,
             self.domain.offsets,
             self.domain.counts,
             self.domain.tiling.rank,
@@ -524,8 +576,8 @@ class Simulator(simulator.Simulator):
             order=domain.order,
         )
         self.Aimp_src = TransportMatrix(
-            matrix_files,
-            "Aimp",
+            Aimp_files,
+            Aimp_name,
             self.domain.offsets,
             self.domain.counts,
             self.domain.tiling.rank,
@@ -535,23 +587,22 @@ class Simulator(simulator.Simulator):
         )
         self.Aexp = self.Aexp_src.create_sparse_array()
         self.Aimp = self.Aimp_src.create_sparse_array()
-        self._matrix_times = matrix_times
         if self.Aexp_src.ndim == 2:
             Aexp_tip = pygetm.input.TemporalInterpolation(
-                self.Aexp_src, 0, self._matrix_times, climatology=True
+                self.Aexp_src, 0, matrix_times, climatology=True
             )
             self.input_manager._all_fields.append(
                 (Aexp_tip.name, Aexp_tip, self.Aexp.data)
             )
         if self.Aimp_src.ndim == 2:
             Aimp_tip = pygetm.input.TemporalInterpolation(
-                self.Aimp_src, 0, self._matrix_times, climatology=True
+                self.Aimp_src, 0, matrix_times, climatology=True
             )
             self.input_manager._all_fields.append(
                 (Aimp_tip.name, Aimp_tip, self.Aimp.data)
             )
 
-        self.load_environment()
+        self.load_environment(periodic_forcing, calendar)
 
     def start(
         self,
@@ -600,8 +651,10 @@ class Simulator(simulator.Simulator):
             # Copy updated tracer values back to authoratitive array
             tracer_tmm[self.domain.wet_loc] = vtmp
 
-    def load_environment(self):
+    def load_environment(self, periodic: bool, calendar: str):
         root = os.path.dirname(self.domain._grid_file)
+
+        times = climatology_times(calendar)
 
         def _get_variable(path: str, varname: str, **kwargs) -> pygetm.core.Array:
             array = self.domain.T.array(**kwargs)
@@ -609,9 +662,12 @@ class Simulator(simulator.Simulator):
                 path,
                 varname,
                 self.domain._grid_file,
-                times=self._matrix_times,
+                times=times,
             )
-            array.set(src, on_grid=pygetm.input.OnGrid.ALL, climatology=True)
+            if periodic:
+                array.set(src, on_grid=pygetm.input.OnGrid.ALL, climatology=True)
+            else:
+                array.set(src.mean(dim="time"), on_grid=pygetm.input.OnGrid.ALL)
             return array
 
         self.temp = _get_variable(
@@ -689,4 +745,3 @@ class Simulator(simulator.Simulator):
         if config["matrix_type"] == "time_dependent":
             print("time varying TMM matrices not implemented yet - except for periodic")
             sys.exit()
-
