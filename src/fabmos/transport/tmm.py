@@ -343,6 +343,8 @@ class TransportMatrix(pygetm.input.LazyArray):
 def _read_grid(fn, logger=None):
     if rank == 0 and logger:
         logger.info(f"Reading grid information from: {fn}")
+    if not os.path.isfile(fn):
+        raise Exception(f"Grid file {fn} does not exist")
     with h5py.File(fn) as ds:
         bathy = np.asarray(ds["bathy"], dtype=int)
         ideep = np.asarray(ds["ideep"], dtype=int)
