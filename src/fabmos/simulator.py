@@ -46,10 +46,24 @@ class Simulator:
         self,
         time: Union[cftime.datetime, datetime.datetime],
         timestep: float,
-        nstep_transport: int = 1,
+        transport_timestep: Optional[float] = None,
         report: datetime.timedelta = datetime.timedelta(days=1),
         profile: Optional[str] = None,
     ):
+        if transport_timestep is None:
+            transport_timestep = timestep
+        nstep_transport = transport_timestep / timestep
+        self.logger.info(
+            f"Using transport timestep of {transport_timestep} s, which is"
+            f" {nstep_transport} * the biogeochemical timestep of {timestep} s"
+        )
+        nstep_transport = int(round(nstep_transport))
+        if (transport_timestep / (nstep_transport * timestep) % 1.0) > 1e-8:
+            raise Exception(
+                f"The transport timestep of {transport_timestep} s must be an"
+                f" exact multiple of the biogeochemical timestep of {timestep} s"
+            )
+
         self.time = pygetm.simulation.to_cftime(time)
         self.logger.info(f"Starting simulation at {self.time}")
         self.timestep = timestep

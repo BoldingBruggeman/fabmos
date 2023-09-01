@@ -608,16 +608,22 @@ class Simulator(simulator.Simulator):
         self,
         time: Union[cftime.datetime, datetime.datetime],
         timestep: float,
-        nstep_transport: int = 1,
+        transport_timestep: Optional[float] = None,
         report: datetime.timedelta = datetime.timedelta(days=1),
         profile: Optional[str] = None,
     ):
-        dt = nstep_transport * timestep
+        dt = transport_timestep or timestep
         nphys = dt / self.domain._delta_t
         self.tmm_logger.info(
-            f"Using transport timestep of {dt} s, which is {nphys} *"
+            f"Transport timestep of {dt} s is {nphys} *"
             f" the original online timestep of {self.domain._delta_t} s."
         )
+        if nphys % 1.0 > 1e-8:
+            raise Exception(
+                f"The transport timestep of {dt} s must be an exact multiple"
+                f" of the original online timestep of {self.domain._delta_t} s"
+            )
+                
         assert (nphys % 1.0) < 1e-8
         self.Aexp_src._scale_factor = dt
         self.Aimp_src._power = int(nphys)
@@ -625,7 +631,7 @@ class Simulator(simulator.Simulator):
             self.Aexp.data[:] = self.Aexp_src
         if self.Aimp_src.ndim == 1:
             self.Aimp.data[:] = self.Aimp_src
-        super().start(time, timestep, nstep_transport, report, profile)
+        super().start(time, timestep, transport_timestep, report, profile)
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)

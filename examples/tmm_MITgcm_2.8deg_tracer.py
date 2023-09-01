@@ -32,7 +32,7 @@ out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_avera
 
 start = cftime.datetime(2000, 1, 1, calendar=calendar)
 stop = cftime.datetime(2001, 1, 1, calendar=calendar)
-sim.start(start, 12 * 3600.0, nstep_transport=1)
+sim.start(start, 12 * 3600)
 while sim.time < stop:
     sim.advance()
 sim.finish()
