@@ -2,12 +2,10 @@ import sys
 import cftime
 import os
 import argparse
-import glob
 import datetime
 
 import fabmos
 import fabmos.transport.tmm
-import pygetm
 
 FABM_CONFIG = dict(
     instances=dict(

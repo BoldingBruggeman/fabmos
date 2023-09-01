@@ -1,6 +1,5 @@
 import cftime
 import os
-import glob
 
 import fabmos.transport.tmm
 import fabmos
