@@ -27,7 +27,6 @@ use_root = True
 
 matrix_types = ("periodic", "time_dependent", "constant")
 
-
 class MatArray(pygetm.input.LazyArray):
     def __init__(self, path: str, name: str):
         transpose = False
@@ -355,83 +354,6 @@ def _read_grid(fn, logger=None):
     return bathy, ideep, x, y, z, dz, delta_t
 
 
-def _profile_indices(
-    ideep: np.ndarray,
-    verbose=False,
-) -> Tuple[int, np.ndarray, np.ndarray]:
-    if rank == 0:
-        ie = ideep.ravel().cumsum().reshape(ideep.shape)
-        ie = np.ma.array(ie, mask=ideep == 0).compressed()
-        nprof = np.asarray(len(ie), dtype=int)
-        ib = np.empty(nprof, dtype=int)
-        ib[0] = 1
-        ib[1:] = ie[:-1] + 1
-    else:
-        ib = None
-        ie = None
-        nprof = np.empty(1, dtype=int)
-
-    if rank == 0 and verbose:
-        print("ib:  ", nprof, ib)
-        print("ie:  ", nprof, ie)
-
-    _comm.Bcast([nprof, MPI.INT], root=0)
-
-    return int(nprof), ib, ie
-
-
-def _mapping_arrays(
-    nprof: int, ib: np.ndarray, ie: np.ndarray, verbose=False
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    if rank == 0:
-        rows = np.empty(nprof + 1, dtype="i")
-        rows[0] = 0
-        rows[1:] = np.cumsum(ie - ib + 1)
-        if verbose:
-            print("rows:", len(rows), rows)
-
-        indx = np.empty(size + 1, dtype=int)
-        if use_root:
-            k = int(np.ceil(nprof / size))
-            indx[0] = 0
-            indx[1:] = k * (np.arange(size) + 1)
-        else:
-            k = int(np.ceil(nprof / (size - 1)))
-            indx[0:2] = 0
-            indx[2:] = k * (np.arange(size - 1) + 1)
-        # indx[0] = 0
-        # indx[1:] = k * (np.arange(size) + 1)
-        indx[size] = min(k * size, nprof)
-        nlp = np.asarray(indx[1:] - indx[:-1], dtype=int)
-        counts = np.asarray(
-            [(rows[indx[i + 1]] - rows[indx[i]]) for i in range(size)], dtype=int
-        )
-
-        o = np.empty(size, dtype=int)
-        o[0] = 0
-        o[1:] = np.cumsum(counts[:-1])
-        offsets = np.append(o, ie[-1])
-    else:
-        rows = None
-        indx = np.empty(size + 1, dtype=int)
-        nlp = np.empty(size, dtype=int)
-        counts = np.empty(size, dtype=int)
-        offsets = np.empty(size + 1, dtype=int)
-
-    _comm.Bcast((nlp, MPI.INTEGER), root=0)
-    _comm.Bcast((indx, MPI.INTEGER), root=0)
-    _comm.Bcast((counts, MPI.INTEGER), root=0)
-    _comm.Bcast((offsets, MPI.INTEGER), root=0)
-
-    if rank == 0 and verbose:
-        print("nlp:     ", np.sum(nlp), nlp)
-        print("indx:    ", len(indx), indx)
-        print("counts:  ", np.sum(counts), counts)
-        print("offsets: ", len(offsets), offsets)
-
-    return nlp, indx, counts, offsets
-
-
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     bathy, ideep, lon, lat, z, dz, delta_t = _read_grid(path, logger=logger)
 
@@ -629,47 +551,6 @@ class Simulator(simulator.Simulator):
 
         self.load_environment()
 
-    def _tmm_matrix_config(self, config: dict):
-        assert config["matrix_type"] in matrix_types
-        assert config["path"]
-
-        if config["matrix_type"] == "constant":
-            constant = config["constant"]
-            assert constant["Ae_fname"]
-            assert constant["Ai_fname"]
-            self._matrix_paths_Ae = list(
-                os.path.join(config["path"], constant["Ae_fname"])
-            )
-            self._matrix_paths_Ai = list(
-                os.path.join(config["path"], constant["Ai_fname"])
-            )
-        if config["matrix_type"] == "periodic":
-            periodic = config["periodic"]
-            assert periodic["num_periods"] > 0
-            assert periodic["Ae_template"]
-            if "base_number" in periodic:
-                offset = periodic["base_number"]
-            else:
-                offset = 0
-            self._matrix_paths_Ae = [
-                os.path.join(
-                    config["path"],
-                    periodic["Ae_template"] % (i + offset),
-                )
-                for i in range(periodic["num_periods"])
-            ]
-            self._matrix_paths_Ai = [
-                os.path.join(
-                    config["path"],
-                    periodic["Ai_template"] % (i + offset),
-                )
-                for i in range(periodic["num_periods"])
-            ]
-
-        if config["matrix_type"] == "time_dependent":
-            print("time varying TMM matrices not implemented yet - except for periodic")
-            sys.exit()
-
     def start(
         self,
         time: Union[cftime.datetime, datetime.datetime],
@@ -764,3 +645,45 @@ class Simulator(simulator.Simulator):
             long_name="ice cover",
             fabm_standard_name="ice_area_fraction",
         )
+
+    def _tmm_matrix_config(self, config: dict):
+        assert config["matrix_type"] in matrix_types
+        assert config["path"]
+
+        if config["matrix_type"] == "constant":
+            constant = config["constant"]
+            assert constant["Ae_fname"]
+            assert constant["Ai_fname"]
+            self._matrix_paths_Ae = list(
+                os.path.join(config["path"], constant["Ae_fname"])
+            )
+            self._matrix_paths_Ai = list(
+                os.path.join(config["path"], constant["Ai_fname"])
+            )
+        if config["matrix_type"] == "periodic":
+            periodic = config["periodic"]
+            assert periodic["num_periods"] > 0
+            assert periodic["Ae_template"]
+            if "base_number" in periodic:
+                offset = periodic["base_number"]
+            else:
+                offset = 0
+            self._matrix_paths_Ae = [
+                os.path.join(
+                    config["path"],
+                    periodic["Ae_template"] % (i + offset),
+                )
+                for i in range(periodic["num_periods"])
+            ]
+            self._matrix_paths_Ai = [
+                os.path.join(
+                    config["path"],
+                    periodic["Ai_template"] % (i + offset),
+                )
+                for i in range(periodic["num_periods"])
+            ]
+
+        if config["matrix_type"] == "time_dependent":
+            print("time varying TMM matrices not implemented yet - except for periodic")
+            sys.exit()
+
