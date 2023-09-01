@@ -5,7 +5,7 @@ import glob
 import fabmos.transport.tmm
 import fabmos
 
-root = "C:/Temp/TMM/MITgcm_2.8deg"
+root = "."
 calendar = "360_day"
 
 # FABM: a single passive tracer
