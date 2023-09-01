@@ -19,7 +19,7 @@ FABM_CONFIG = dict(
 
 parser = argparse.ArgumentParser(
     description=f"Python implementation of the Transport Matrix Method (TMM) - Khatiwala et. al (2005)",
-    prog=f'mpiexec -np <N> {sys.argv[0]}',
+    prog=f"mpiexec -np <N> {sys.argv[0]}",
     epilog="Implemented by BB in the OceanICU Horizon Europe project (Grant No.101083922).",
 )
 parser.add_argument(
@@ -30,9 +30,39 @@ parser.add_argument(
     help="the path to the original TMM data",
 )
 parser.add_argument(
+    "--start_time",
+    type=str,
+    default="2000-01-01 00:00:00",
+    help="integration start time - 2000-01-01 00:00:00",
+)
+parser.add_argument(
+    "--stop_time",
+    type=str,
+    default="2001-01-01 00:00:00",
+    help="integration stop time - 2001-01-01 00:00:00",
+)
+parser.add_argument(
     "--matrix",
     type=int,
     default=1,
+)
+parser.add_argument(
+    "--area",
+    type=float,
+    nargs=4,
+    default=[
+        300.0,
+        330.0,
+        30.0,
+        55.0,
+    ],
+    help=f"area with concentration set - lon1, lon2, lat1, lat2",
+)
+parser.add_argument(
+    "--calendar",
+    type=str,
+    default="360_day",
+    help=f"calendar to use - default - 360_day",
 )
 args = parser.parse_args()
 
@@ -59,22 +89,42 @@ TMM_matrix_config = {
 # grid_file = os.path.join(args.path,"grid.mat")
 domain = fabmos.transport.tmm.create_domain(os.path.join(args.path, "grid.mat"))
 
-calendar = "360_day"
-matrix_files = sorted(glob.glob(os.path.join(args.path, f"Matrix{args.matrix}/TMs/matrix_nocorrection_??.mat")))
-matrix_times = fabmos.transport.tmm.climatology_times(calendar=calendar)
-sim = fabmos.transport.tmm.Simulator(domain, matrix_files=matrix_files, matrix_times=matrix_times, fabm_config=FABM_CONFIG)
-sim['tracer_c'].fill(0)
-#sim['tracer_c'].values[:, (domain.T.lon.values > 320) & (domain.T.lon.values < 330) & (domain.T.lat.values > 50) & (domain.T.lat.values < 55)] = 10.
-sim['tracer_c'].values[:, (domain.T.lon.values > 300) & (domain.T.lon.values < 330) & (domain.T.lat.values > 30) & (domain.T.lat.values < 55)] = 1.
+# calendar = "360_day"
+matrix_files = sorted(
+    glob.glob(
+        os.path.join(args.path, f"Matrix{args.matrix}/TMs/matrix_nocorrection_??.mat")
+    )
+)
+matrix_times = fabmos.transport.tmm.climatology_times(calendar=args.calendar)
+sim = fabmos.transport.tmm.Simulator(
+    domain,
+    matrix_files=matrix_files,
+    matrix_times=matrix_times,
+    fabm_config=FABM_CONFIG,
+)
+sim["tracer_c"].fill(0)
+sim["tracer_c"].values[
+    :,
+    (domain.T.lon.values > args.area[0])
+    & (domain.T.lon.values < args.area[1])
+    & (domain.T.lat.values > args.area[2])
+    & (domain.T.lat.values < args.area[3]),
+] = 1.0
 
 out = sim.output_manager.add_netcdf_file(
-    "output.nc", interval=datetime.timedelta(days=7)
+    "output.nc", interval=datetime.timedelta(days=30)
 )
 out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_average=True)
 
 # 1 hour time step for BGC, 12 hour for transport
-sim.start(cftime.datetime(2000, 1, 1, calendar=calendar), 12 * 3600.0, nstep_transport=1)
-while sim.time < cftime.datetime(2001, 1, 1, calendar=calendar):
-#while sim.time < cftime.datetime(2000, 2, 1, calendar=calendar):
+start = datetime.datetime.strptime(args.start_time, "%Y-%m-%d %H:%M:%S")
+# print(start)
+stop = datetime.datetime.strptime(args.stop_time, "%Y-%m-%d %H:%M:%S")
+# print(stop)
+sim.start(
+    cftime.datetime(2000, 1, 1, calendar=args.calendar), 12 * 3600.0, nstep_transport=1
+)
+
+while sim.time < cftime.datetime(2001, 1, 1, calendar=args.calendar):
     sim.advance()
 sim.finish()
