@@ -1,5 +1,6 @@
 import datetime
 from typing import List, Union
+import timeit
 
 import cftime
 
@@ -57,6 +58,7 @@ class Simulator:
         self.fabm.start(self.time)
         self.update_diagnostics()
         self.output_manager.start(self.istep, self.time)
+        self._start_time = timeit.default_timer()
 
     def advance(self):
         self.time += self.timedelta
@@ -88,4 +90,6 @@ class Simulator:
         self.logger.debug(f"transport advancing to {self.time} (dt={timestep} s)")
 
     def finish(self):
+        nsecs = timeit.default_timer() - self._start_time
+        self.logger.info(f"Time spent in main loop: {nsecs:.3f} s")
         self.output_manager.close(self.timestep * self.istep, self.time)
