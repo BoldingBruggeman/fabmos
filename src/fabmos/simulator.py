@@ -1,11 +1,13 @@
 import datetime
-from typing import List, Union
+from typing import List, Union, Optional
 import timeit
+import pstats
 
 import cftime
 
 import pygetm
 from . import environment
+
 
 class Simulator:
     def __init__(self, domain: pygetm.domain.Domain, fabm_config: str = "fabm.yaml"):
@@ -46,6 +48,7 @@ class Simulator:
         timestep: float,
         nstep_transport: int = 1,
         report: datetime.timedelta = datetime.timedelta(days=1),
+        profile: Optional[str] = None,
     ):
         self.time = pygetm.simulation.to_cftime(time)
         self.logger.info(f"Starting simulation at {self.time}")
@@ -59,6 +62,15 @@ class Simulator:
         self.update_diagnostics()
         self.output_manager.start(self.istep, self.time)
         self._start_time = timeit.default_timer()
+
+        # Start profiling if requested
+        self._profile = None
+        if profile:
+            import cProfile
+
+            pr = cProfile.Profile()
+            self._profile = (profile, pr)
+            pr.enable()
 
     def advance(self):
         self.time += self.timedelta
@@ -90,6 +102,15 @@ class Simulator:
         self.logger.debug(f"transport advancing to {self.time} (dt={timestep} s)")
 
     def finish(self):
+        if self._profile:
+            name, pr = self._profile
+            pr.disable()
+            profile_path = f"{name}-{self.domain.tiling.rank:03}.prof"
+            self.logger.info(f"Writing profiling report to {profile_path}")
+            with open(profile_path, "w") as f:
+                ps = pstats.Stats(pr, stream=f).sort_stats(pstats.SortKey.TIME)
+                ps.print_stats()
+
         nsecs = timeit.default_timer() - self._start_time
         self.logger.info(f"Time spent in main loop: {nsecs:.3f} s")
         self.output_manager.close(self.timestep * self.istep, self.time)

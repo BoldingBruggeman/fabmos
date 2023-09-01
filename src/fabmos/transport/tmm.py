@@ -559,6 +559,7 @@ class Simulator(simulator.Simulator):
         timestep: float,
         nstep_transport: int = 1,
         report: datetime.timedelta = datetime.timedelta(days=1),
+        profile: Optional[str] = None,
     ):
         dt = nstep_transport * timestep
         nphys = dt / self.domain._delta_t
@@ -573,7 +574,7 @@ class Simulator(simulator.Simulator):
             self.Aexp.data[:] = self.Aexp_src
         if self.Aimp_src.ndim == 1:
             self.Aimp.data[:] = self.Aimp_src
-        super().start(time, timestep, nstep_transport, report)
+        super().start(time, timestep, nstep_transport, report, profile)
 
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
