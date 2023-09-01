@@ -118,13 +118,11 @@ out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_avera
 
 # 1 hour time step for BGC, 12 hour for transport
 start = datetime.datetime.strptime(args.start_time, "%Y-%m-%d %H:%M:%S")
-# print(start)
 stop = datetime.datetime.strptime(args.stop_time, "%Y-%m-%d %H:%M:%S")
-# print(stop)
 sim.start(
-    cftime.datetime(2000, 1, 1, calendar=args.calendar), 12 * 3600.0, nstep_transport=1
+    cftime.datetime(start.year, start.month, start.day, calendar=args.calendar), 12 * 3600.0, nstep_transport=1
 )
 
-while sim.time < cftime.datetime(2001, 1, 1, calendar=args.calendar):
+while sim.time < cftime.datetime(stop.year, stop.month, stop.day, calendar=args.calendar):
     sim.advance()
 sim.finish()
