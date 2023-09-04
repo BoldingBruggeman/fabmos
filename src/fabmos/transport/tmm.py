@@ -447,7 +447,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     offset = domain.offsets[domain.tiling.rank]
     domain.tmm_slice = slice(offset, offset + domain.nwet)
     domain.dz = dz[:, np.newaxis, mask_hz]
-    domain.da = da[0, np.newaxis, mask_hz]
+    domain.da = da[0, mask_hz][np.newaxis, :]
     global_indices = np.indices(ideep.shape)
     local_indices = [i[mask_hz][slc_glob[-1]] for i in global_indices]
     domain.input_grid_mappers.append(
