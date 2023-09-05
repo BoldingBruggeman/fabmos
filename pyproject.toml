@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools >= 61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "fabmos"
@@ -19,5 +19,7 @@ classifiers = [
   "Operating System :: OS Independent"
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/fabmos"]
+[project.urls]
+"Homepage" = "https://github.com/BoldingBruggeman/fabmos"
+"Documentation" = "https://github.com/BoldingBruggeman/fabmos/wiki"
+"Repository" = "https://github.com/BoldingBruggeman/fabmos"

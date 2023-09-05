@@ -2,3 +2,7 @@
 /examples/*.log
 __pycache__
 /examples/*.png
+/build
+*.prof
+/src/fabmos.egg-info
+/src/fabmos/fabm_tmm.dll

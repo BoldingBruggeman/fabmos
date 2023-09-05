@@ -438,6 +438,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     domain.order = order
 
     domain.nwet = ideep_loc.sum()
+    domain.ideep_loc = ideep_loc
     domain.counts = np.empty(domain.tiling.n, dtype=int)
     domain.offsets = np.zeros_like(domain.counts)
     domain.tiling.comm.Allgather(domain.nwet, domain.counts)
@@ -539,15 +540,18 @@ class Simulator(simulator.Simulator):
         calendar: str = "standard",
         fabm_config: str = "fabm.yaml",
     ):
-        super().__init__(domain, fabm_config)
+        fabm_libname = os.path.join(os.path.dirname(__file__), '..', "fabm_tmm")
+        domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=0)
+        domain.mask3d.values[:, 0, :] = np.where(domain.wet_loc.T, 1, 0)
+        domain.bottom_indices = domain.T.array(dtype=np.intc, fill=0)
+        domain.bottom_indices.values[0, :] = domain.ideep_loc
+
+        super().__init__(domain, fabm_config, fabm_libname=fabm_libname)
         self.tmm_logger = self.logger.getChild("TMM")
         self.tmm_logger.info(f"Initializing TMM component")
         _update_coordinates(self.domain.T, self.domain.dz, self.domain.da)
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_coordinates(self.domain.glob.T, self.domain.dz, self.domain.da)
-
-        self.domain.mask3d = domain.T.array(z=CENTERS, dtype=bool, fill=False)
-        self.domain.mask3d.values[:, 0, :] = self.domain.wet_loc.T
 
         root = os.path.dirname(self.domain._grid_file)
         config = _read_config(os.path.join(root, "config_data.mat"))
@@ -614,12 +618,17 @@ class Simulator(simulator.Simulator):
     def start(
         self,
         time: Union[cftime.datetime, datetime.datetime],
-        timestep: float,
-        transport_timestep: Optional[float] = None,
+        timestep: Union[float, datetime.timedelta],
+        transport_timestep: Optional[Union[float, datetime.timedelta]] = None,
         report: datetime.timedelta = datetime.timedelta(days=1),
         report_totals: Union[int, datetime.timedelta] = datetime.timedelta(days=10),
         profile: Optional[str] = None,
     ):
+        if isinstance(timestep, datetime.timedelta):
+            timestep = timestep.total_seconds()
+        if isinstance(transport_timestep, datetime.timedelta):
+            transport_timestep = transport_timestep.total_seconds()
+
         dt = transport_timestep or timestep
         nphys = dt / self.domain._delta_t
         self.tmm_logger.info(

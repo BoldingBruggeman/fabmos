@@ -10,10 +10,15 @@ from . import environment
 
 
 class Simulator:
-    def __init__(self, domain: pygetm.domain.Domain, fabm_config: str = "fabm.yaml"):
+    def __init__(
+        self,
+        domain: pygetm.domain.Domain,
+        fabm_config: str = "fabm.yaml",
+        fabm_libname: str = "fabm",
+    ):
         self.logger = domain.root_logger
 
-        self.fabm = pygetm.fabm.FABM(fabm_config)
+        self.fabm = pygetm.fabm.FABM(fabm_config, libname=fabm_libname)
 
         self.domain = domain
 
@@ -45,12 +50,14 @@ class Simulator:
     def start(
         self,
         time: Union[cftime.datetime, datetime.datetime],
-        timestep: float,
+        timestep: Union[float, datetime.timedelta],
         transport_timestep: Optional[float] = None,
         report: datetime.timedelta = datetime.timedelta(days=1),
         report_totals: Union[int, datetime.timedelta] = datetime.timedelta(days=10),
         profile: Optional[str] = None,
     ):
+        if isinstance(timestep, datetime.timedelta):
+            timestep = timestep.total_seconds()
         if transport_timestep is None:
             transport_timestep = timestep
         nstep_transport = transport_timestep / timestep
@@ -146,9 +153,10 @@ class Simulator:
             A list with (tracer_total, total, mean) tuples on the root subdomains.
             On non-root subdomains it returns None
         """
-        unmasked = self.domain.T.mask != 0
+        unmasked2d = self.domain.T.mask != 0
+        unmasked3d = self.domain.mask3d != 0
         total_volume = (self.domain.T.hn * self.domain.T.area).global_sum(
-            where=self.domain.mask3d
+            where=unmasked3d
         )
         tracer_totals = [] if total_volume is not None else None
         if self.fabm:
@@ -162,9 +170,9 @@ class Simulator:
                 total.all_values += tt.offset * grid.area.all_values
             if total.ndim == 3:
                 total.all_values *= grid.hn.all_values
-                total = total.global_sum(where=self.domain.mask3d)
+                total = total.global_sum(where=unmasked3d)
             else:
-                total = total.global_sum(where=unmasked)
+                total = total.global_sum(where=unmasked2d)
             if total is not None:
                 mean = (total / total_volume - tt.offset) / tt.scale_factor
                 tracer_totals.append((tt, total, mean))
