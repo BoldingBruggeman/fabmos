@@ -18,7 +18,9 @@ class Simulator:
     ):
         self.logger = domain.root_logger
 
-        self.fabm = pygetm.fabm.FABM(fabm_config, libname=fabm_libname)
+        self.fabm = pygetm.fabm.FABM(
+            fabm_config, libname=fabm_libname, time_varying=pygetm.TimeVarying.MICRO
+        )
 
         self.domain = domain
 
@@ -84,7 +86,7 @@ class Simulator:
         self.report_totals = report_totals
 
         self.fabm.start(self.time)
-        self.update_diagnostics()
+        self.update_diagnostics(macro=True)
         self.output_manager.start(self.istep, self.time)
         self._start_time = timeit.default_timer()
 
@@ -105,7 +107,7 @@ class Simulator:
             self.logger.info(self.time)
 
         self.output_manager.prepare_save(
-            self.timestep * self.istep, self.istep, self.time, macro=True
+            self.timestep * self.istep, self.istep, self.time, macro=apply_transport
         )
 
         self.logger.debug(f"fabm advancing to {self.time} (dt={self.timestep} s)")
@@ -114,12 +116,12 @@ class Simulator:
         if apply_transport:
             self.transport(self.nstep_transport * self.timestep)
 
-        self.update_diagnostics()
+        self.update_diagnostics(apply_transport)
 
         self.output_manager.save(self.timestep * self.istep, self.istep, self.time)
 
-    def update_diagnostics(self):
-        self.input_manager.update(self.time, macro=True)
+    def update_diagnostics(self, macro: bool):
+        self.input_manager.update(self.time, macro=macro)
         self.radiation.update(self.time)
         self.fabm.update_sources(self.time)
 
