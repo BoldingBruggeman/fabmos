@@ -269,10 +269,15 @@ class TransportMatrix(pygetm.input.LazyArray):
         if self._rank == 0:
             d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
             if self._power != 1:
+                n = self.global_indptr.size - 1
                 csr = scipy.sparse.csr_matrix(
-                    (d, self.global_indices, self.global_indptr)
+                    (d, self.global_indices, self.global_indptr), (n, n)
                 )
-                d = (csr**self._power).data
+                csr2 = csr**self._power
+                csr2.sort_indices()
+                d = csr2.data
+                assert (csr.indices == csr2.indices).all()
+                assert (csr.indptr == csr2.indptr).all()
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
@@ -285,7 +290,7 @@ class TransportMatrix(pygetm.input.LazyArray):
 
     def __array__(self, dtype=None) -> np.ndarray:
         assert len(self._file_list) == 1
-        return self[:]
+        return self[(slice(None),)]
 
     def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
         try:
@@ -304,12 +309,11 @@ class TransportMatrix(pygetm.input.LazyArray):
             dtype = A.dtype
         n = A_jc.size - 1
 
-        if order is None:
-            old2newindex = np.arange(n)
-        else:
+        old2newindex = np.arange(n)
+        if order is not None:
             assert order.shape == (n,)
-            old2newindex = np.argsort(order)
-            A_ir = old2newindex[A_ir]
+            old2newindex[order] = np.arange(n)
+            A_ir[:] = old2newindex[A_ir]
 
         # Determine CSC to CSR mapping
         items_per_row = np.zeros((n,), dtype=int)
