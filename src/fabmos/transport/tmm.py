@@ -190,6 +190,8 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
 
 
 class TransportMatrix(pygetm.input.LazyArray):
+    MAX_CACHE_SIZE = 1024**3
+
     def __init__(
         self,
         file_list: list,
@@ -250,6 +252,10 @@ class TransportMatrix(pygetm.input.LazyArray):
         if assert_local:
             assert ((self.indices >= istartrow) & (self.indices < istoprow)).all()
 
+        nbytes = indptr[-1] * dtype.itemsize * len(file_list)
+        self._cache = {}
+        self._use_cache = nbytes < self.MAX_CACHE_SIZE
+
         shape = (self.indices.size,)
         if len(file_list) > 1:
             shape = (len(file_list),) + shape
@@ -257,6 +263,8 @@ class TransportMatrix(pygetm.input.LazyArray):
 
     def __getitem__(self, slices) -> np.ndarray:
         itime = 0 if len(self._file_list) == 1 else slices[0]
+        if itime in self._cache:
+            return self._cache[itime]
         assert isinstance(itime, (int, np.integer))
         if self._rank == 0:
             d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
@@ -269,10 +277,11 @@ class TransportMatrix(pygetm.input.LazyArray):
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
         self._comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
-        result = values[slices[1:]] if len(self._file_list) > 1 else values[slices]
         if self._scale_factor != 1.0:
-            result *= self._scale_factor
-        return result
+            values *= self._scale_factor
+        if self._use_cache:
+            self._cache[itime] = values
+        return values[slices[-1]]
 
     def __array__(self, dtype=None) -> np.ndarray:
         assert len(self._file_list) == 1
