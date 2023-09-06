@@ -65,13 +65,11 @@ def get_mat_array(
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
     data = MatArray(path, name)
-    bathy, ideep, x, y, z, dz, da, delta_t = _read_grid(grid_file)
+    x, y, dz = _load_mat(grid_file, "x", "y", "dz")
     dims = ["y", "x"]
     coords = {}
-    coords["lon"] = xr.DataArray(x[0, :], dims=("x",), attrs=dict(units="degrees_east"))
-    coords["lat"] = xr.DataArray(
-        y[0, :], dims=("y",), attrs=dict(units="degrees_north")
-    )
+    coords["lon"] = xr.DataArray(x, dims=("x",), attrs=dict(units="degrees_east"))
+    coords["lat"] = xr.DataArray(y, dims=("y",), attrs=dict(units="degrees_north"))
     assert data.shape[-1] == x.size
     assert data.shape[-2] == y.size
     if data.ndim > 2 and data.shape[-3] == dz.shape[0]:
@@ -204,6 +202,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         logger=None,
         power=1,
         scale_factor=1.0,
+        assert_local: bool = False,
     ):
         if logger:
             logger.info(f"Initializing {name} arrays")
@@ -247,6 +246,9 @@ class TransportMatrix(pygetm.input.LazyArray):
         self.dense_shape = (counts[rank], counts.sum())
         self._power = power
         self._scale_factor = scale_factor
+
+        if assert_local:
+            assert ((self.indices >= istartrow) & (self.indices < istoprow)).all()
 
         shape = (self.indices.size,)
         if len(file_list) > 1:
@@ -382,6 +384,21 @@ def _read_config(fn: str) -> Mapping[str, Any]:
     for k in ("fixEmP", "rescaleForcing", "useAreaWeighting"):
         config[k] = (config[k] != 0).any()
     return config
+
+
+def _load_mat(
+    fn: str, *names: str, dtype: Optional[npt.DTypeLike] = None
+) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    if not os.path.isfile(fn):
+        raise Exception(f"File {fn} does not exist")
+    values = []
+    with h5py.File(fn) as ds:
+        for name in names:
+            data = np.asarray(ds[name], dtype=dtype)
+            while data.ndim and data.shape[0] == 1:
+                data = data[0, ...]
+            values.append(data)
+    return values[0] if len(names) == 1 else tuple(values)
 
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
@@ -523,6 +540,7 @@ def _update_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray, da: np.ndarray
     grid.zf.attrs["_time_varying"] = False
 
     grid.area.values[slc_loc] = da[slc_glob]
+    grid.D.values[slc_loc] = grid.H.values[slc_loc]
 
 
 def climatology_times(calendar="standard"):
@@ -540,9 +558,10 @@ class Simulator(simulator.Simulator):
         calendar: str = "standard",
         fabm_config: str = "fabm.yaml",
     ):
-        fabm_libname = os.path.join(os.path.dirname(__file__), '..', "fabm_tmm")
+        fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_tmm")
         domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=0)
         domain.mask3d.values[:, 0, :] = np.where(domain.wet_loc.T, 1, 0)
+        domain.T._land3d = domain.mask3d.all_values == 0
         domain.bottom_indices = domain.T.array(dtype=np.intc, fill=0)
         domain.bottom_indices.values[0, :] = domain.ideep_loc
 
@@ -555,6 +574,12 @@ class Simulator(simulator.Simulator):
 
         root = os.path.dirname(self.domain._grid_file)
         config = _read_config(os.path.join(root, "config_data.mat"))
+        Ir_pre = _load_mat(
+            os.path.join(config["matrixPath"], "Data/profile_data.mat"),
+            "Ir_pre",
+            dtype=int,
+        )
+        assert (Ir_pre - 1 == domain.order).all()
 
         Aexp_files = []
         Aimp_files = []
@@ -595,6 +620,7 @@ class Simulator(simulator.Simulator):
             self.domain.tiling.comm,
             logger=self.tmm_logger,
             order=domain.order,
+            assert_local=True,
         )
         self.Aexp = self.Aexp_src.create_sparse_array()
         self.Aimp = self.Aimp_src.create_sparse_array()
@@ -666,9 +692,6 @@ class Simulator(simulator.Simulator):
             # do the explicit step
             vtmp = self.Aexp.dot(packed_values)
             packed_values[self.domain.tmm_slice] += vtmp
-
-            # everything back to all processes
-            self.domain.tiling.comm.Allgatherv(MPI.IN_PLACE, rcvbuf)
 
             # do the implicit step
             vtmp = self.Aimp.dot(packed_values)
