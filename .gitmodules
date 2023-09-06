@@ -1,3 +1,6 @@
 [submodule "extern/fabm"]
 	path = extern/fabm
 	url = ../../fabm-model/fabm.git
+[submodule "extern/fabm-mops"]
+	path = extern/fabm-mops
+	url = ../fabm-mops.git
