@@ -263,9 +263,9 @@ class TransportMatrix(pygetm.input.LazyArray):
 
     def __getitem__(self, slices) -> np.ndarray:
         itime = 0 if len(self._file_list) == 1 else slices[0]
-        if itime in self._cache:
-            return self._cache[itime]
         assert isinstance(itime, (int, np.integer))
+        if itime in self._cache:
+            return self._cache[itime][slices[-1]]
         if self._rank == 0:
             d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
             if self._power != 1:
@@ -679,14 +679,27 @@ class Simulator(simulator.Simulator):
         assert (nphys % 1.0) < 1e-8
         self.Aexp_src._scale_factor = dt
         self.Aimp_src._power = int(nphys)
+        self.Aexp_src._cache.clear()
+        self.Aimp_src._cache.clear()
         if self.Aexp_src.ndim == 1:
             self.Aexp.data[:] = self.Aexp_src
         if self.Aimp_src.ndim == 1:
             self.Aimp.data[:] = self.Aimp_src
+
         super().start(
             time, timestep, transport_timestep, report, report_totals, profile
         )
 
+    def _preload_transport_matrices(self):
+        if self.Aexp_src.ndim == 2 and self.Aexp_src._use_cache:
+            self.tmm_logger.info("Preloading all explicit matrices")
+            for itime in range(self.Aexp_src.shape[0]):
+                self.Aexp_src[itime, :]
+        if self.Aimp_src.ndim == 2 and self.Aexp_src._use_cache:
+            self.tmm_logger.info("Preloading all implicit matrices")
+            for itime in range(self.Aimp_src.shape[0]):
+                self.Aimp_src[itime, :]
+        
     def transport(self, timestep: float):
         packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
         rcvbuf = (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE)
