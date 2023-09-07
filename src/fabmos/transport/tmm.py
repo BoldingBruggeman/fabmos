@@ -431,11 +431,19 @@ def _read_config(fn: str) -> Mapping[str, Any]:
     if not os.path.isfile(fn):
         raise Exception(f"Configuration file {fn} does not exist")
     config = {}
-    with h5py.File(fn) as ds:
-        for k in ds.keys():
-            v = np.squeeze(ds[k][...])
-            if v.dtype == "<u2":
-                v = bytes(v[:]).decode("utf16")
+    try:
+        # MATLAB >= 7.3 format (HDF5)
+        with h5py.File(fn) as ds:
+            for k in ds.keys():
+                v = np.squeeze(ds[k][...])
+                if v.dtype == "<u2":
+                    v = bytes(v[:]).decode("utf16")
+                config[k] = v
+    except OSError:
+        # MATLAB < 7.3 format
+        for k, v in scipy.io.loadmat(fn).items():
+            if isinstance(v, np.ndarray) and np.issubdtype(v.dtype, 'U'):
+                v = str(v[0])
             config[k] = v
     for k in ("fixEmP", "rescaleForcing", "useAreaWeighting"):
         config[k] = (config[k] != 0).any()
