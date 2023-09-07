@@ -4,7 +4,7 @@ import os
 import fabmos.transport.tmm
 import fabmos
 
-root = "."
+tm_config_dir = "."
 calendar = "360_day"
 
 # FABM: a single passive tracer
@@ -16,7 +16,7 @@ FABM_CONFIG = dict(
     )
 )
 
-domain = fabmos.transport.tmm.create_domain(root)
+domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
 sim = fabmos.transport.tmm.Simulator(
     domain,
