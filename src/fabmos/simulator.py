@@ -34,6 +34,7 @@ class Simulator:
         self.input_manager.set_logger(self.logger.getChild("input_manager"))
 
         self.domain.initialize(pygetm.BAROCLINIC)
+        self.domain.depth.fabm_standard_name = "pressure"
 
         self.radiation = environment.ShortWaveRadiation(self.domain.T)
 
