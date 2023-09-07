@@ -79,8 +79,7 @@ TMM_matrix_config = {
     "time_dependent": {},
 }
 
-# grid_file = os.path.join(args.path,"grid.mat")
-domain = fabmos.transport.tmm.create_domain(os.path.join(args.path, "grid.mat"))
+domain = fabmos.transport.tmm.create_domain(args.path)
 
 # calendar = "360_day"
 sim = fabmos.transport.tmm.Simulator(

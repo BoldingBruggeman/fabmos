@@ -16,7 +16,7 @@ FABM_CONFIG = dict(
     )
 )
 
-domain = fabmos.transport.tmm.create_domain(os.path.join(root, "grid.mat"))
+domain = fabmos.transport.tmm.create_domain(root)
 
 sim = fabmos.transport.tmm.Simulator(
     domain,

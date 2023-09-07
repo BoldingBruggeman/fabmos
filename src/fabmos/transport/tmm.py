@@ -458,6 +458,9 @@ def _load_mat(
 
 
 def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
+    if os.path.isdir(path):
+        path = os.path.join(path, "grid.mat")
+
     bathy, ideep, lon, lat, z, dz, da, delta_t = _read_grid(path, logger=logger)
 
     # If x,y coordinates are effectively 1D, transpose latitude to ensure
