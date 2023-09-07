@@ -202,9 +202,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         comm: MPI.Comm,
         order: Optional[np.ndarray] = None,
         logger=None,
-        power=1,
-        scale_factor=1.0,
-        assert_local: bool = False,
+        localize: bool = False,
     ):
         if logger:
             logger.info(f"Initializing {name} arrays")
@@ -245,21 +243,54 @@ class TransportMatrix(pygetm.input.LazyArray):
         comm.Scatterv(
             [self.global_indices, self._counts, self._offsets, mpi_dtype], self.indices
         )
-        self.dense_shape = (counts[rank], counts.sum())
-        self._power = power
-        self._scale_factor = scale_factor
+        self.diag_indices = self._get_diagonal_indices(self.indptr, self.indices - istartrow)
 
-        if assert_local:
+        self._power = 1
+        self._scale_factor = 1.0
+        self._add_identity = False
+
+        if localize:
             assert ((self.indices >= istartrow) & (self.indices < istoprow)).all()
+            self.indices -= istartrow
+            self.dense_shape = (counts[rank], counts[rank])
+        else:
+            self.dense_shape = (counts[rank], counts.sum())
 
         nbytes = indptr[-1] * dtype.itemsize * len(file_list)
         self._cache = {}
-        self._use_cache = nbytes < self.MAX_CACHE_SIZE
+        self._use_cache = nbytes < self.MAX_CACHE_SIZE and len(file_list) > 1
 
         shape = (self.indices.size,)
         if len(file_list) > 1:
             shape = (len(file_list),) + shape
         super().__init__(shape, dtype.newbyteorder("="), name)
+
+    @property
+    def power(self) -> int:
+        return self._power
+
+    @power.setter
+    def power(self, value: int):
+        self._cache.clear()
+        self._power = value
+
+    @property
+    def scale_factor(self) -> float:
+        return self._scale_factor
+
+    @scale_factor.setter
+    def scale_factor(self, value: float):
+        self._cache.clear()
+        self._scale_factor = value
+
+    @property
+    def add_identity(self) -> bool:
+        return self._add_identity
+
+    @add_identity.setter
+    def add_identity(self, value: bool):
+        self._cache.clear()
+        self._add_identity = value
 
     def __getitem__(self, slices) -> np.ndarray:
         itime = 0 if len(self._file_list) == 1 else slices[0]
@@ -268,22 +299,22 @@ class TransportMatrix(pygetm.input.LazyArray):
             return self._cache[itime][slices[-1]]
         if self._rank == 0:
             d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
-            if self._power != 1:
-                n = self.global_indptr.size - 1
-                csr = scipy.sparse.csr_matrix(
-                    (d, self.global_indices, self.global_indptr), (n, n)
-                )
-                csr2 = csr**self._power
-                csr2.sort_indices()
-                d = csr2.data
-                assert (csr.indices == csr2.indices).all()
-                assert (csr.indptr == csr2.indptr).all()
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
         self._comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
         if self._scale_factor != 1.0:
             values *= self._scale_factor
+        if self._add_identity:
+            values[self.diag_indices] += 1.0
+        if self._power != 1:
+            # Matrix power for local block (current subdomain only)
+            csr = self.create_sparse_array(values, scipy.sparse.csr_matrix)
+            csr2 = csr**self._power
+            csr2.sort_indices()
+            assert (csr.indices == csr2.indices).all()
+            assert (csr.indptr == csr2.indptr).all()
+            values = csr2.data
         if self._use_cache:
             self._cache[itime] = values
         return values[slices[-1]]
@@ -291,6 +322,16 @@ class TransportMatrix(pygetm.input.LazyArray):
     def __array__(self, dtype=None) -> np.ndarray:
         assert len(self._file_list) == 1
         return self[(slice(None),)]
+
+    def _get_diagonal_indices(
+        self, indptr: np.ndarray, indices: np.ndarray
+    ) -> np.ndarray:
+        diag_indices = np.empty((indptr.size - 1,), dtype=indptr.dtype)
+        for irow, (start, stop) in enumerate(zip(indptr[:-1], indptr[1:])):
+            idiag = (indices[start:stop] == irow).nonzero()[0]
+            assert idiag.size == 1
+            diag_indices[irow] = start + idiag
+        return diag_indices
 
     def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
         try:
@@ -356,13 +397,11 @@ class TransportMatrix(pygetm.input.LazyArray):
             data = vardict[self._group_name].data
         return data[self.index_map]
 
-    def create_sparse_array(self) -> scipy.sparse.csr_array:
-        return scipy.sparse.csr_array(
-            (
-                np.empty((self.shape[-1],), self.dtype),
-                self.indices,
-                self.indptr,
-            ),
+    def create_sparse_array(self, data=None, type=scipy.sparse.csr_array) -> scipy.sparse.csr_array:
+        if data is None:
+            data = np.empty((self.shape[-1],), self.dtype)
+        return type(
+            (data, self.indices, self.indptr),
             self.dense_shape,
         )
 
@@ -633,7 +672,7 @@ class Simulator(simulator.Simulator):
             self.domain.tiling.comm,
             logger=self.tmm_logger,
             order=domain.order,
-            assert_local=True,
+            localize=True,
         )
         self.Aexp = self.Aexp_src.create_sparse_array()
         self.Aimp = self.Aimp_src.create_sparse_array()
@@ -681,10 +720,9 @@ class Simulator(simulator.Simulator):
             )
 
         assert (nphys % 1.0) < 1e-8
-        self.Aexp_src._scale_factor = dt
-        self.Aimp_src._power = int(nphys)
-        self.Aexp_src._cache.clear()
-        self.Aimp_src._cache.clear()
+        self.Aexp_src.scale_factor = dt
+        self.Aexp_src.add_identity = True
+        self.Aimp_src.power = int(nphys)
         if self.Aexp_src.ndim == 1:
             self.Aexp.data[:] = self.Aexp_src
         if self.Aimp_src.ndim == 1:
@@ -706,9 +744,8 @@ class Simulator(simulator.Simulator):
             self.domain.offsets * ntracer,
             MPI.DOUBLE,
         )
-        sendbuf = self.local_tracers.ravel()
         self.gather_tracer = functools.partial(
-            self.domain.tiling.comm.Iallgatherv, sendbuf, recvbuf
+            self.domain.tiling.comm.Iallgatherv, MPI.IN_PLACE, recvbuf
         )
         self.gather_req = self.gather_tracer()
 
@@ -735,14 +772,13 @@ class Simulator(simulator.Simulator):
         MPI.Request.Wait(self.gather_req)
 
         # Do the explicit step
-        vtmp = self.Aexp.dot(self.global_tracers)
-        self.local_tracers += vtmp
+        new_local_tracers = self.Aexp.dot(self.global_tracers)
 
         # Add the biogeochemical/FABM tracer increment
-        self.local_tracers += fabm_tracer_change
+        new_local_tracers += fabm_tracer_change
 
         # Do the implicit step
-        self.local_tracers[:, :] = self.Aimp.dot(self.global_tracers)
+        self.local_tracers[:, :] = self.Aimp.dot(new_local_tracers)
 
         # Start synchronizing the compressed tracer state across subdomains
         self.gather_req = self.gather_tracer()
