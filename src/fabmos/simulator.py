@@ -124,6 +124,7 @@ class Simulator:
         self.input_manager.update(self.time, macro=macro)
         self.radiation.update(self.time)
         self.fabm.update_sources(self.time)
+        self.fabm.add_vertical_movement_to_sources()
 
         if self.report_totals != 0 and self.istep % self.report_totals == 0:
             self.report_domain_integrals()
