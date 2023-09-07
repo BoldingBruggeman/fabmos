@@ -4,3 +4,6 @@
 [submodule "extern/fabm-mops"]
 	path = extern/fabm-mops
 	url = ../fabm-mops.git
+[submodule "extern/ersem"]
+	path = extern/ersem
+	url = ../../pmlmodelling/ersem.git
