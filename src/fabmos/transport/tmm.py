@@ -694,6 +694,24 @@ class Simulator(simulator.Simulator):
             time, timestep, transport_timestep, report, report_totals, profile
         )
 
+        ntracer = len(self.tracers)
+        tracer_dtype = self.domain.T.H.dtype
+        self.global_tracers = np.empty((self.domain.nwet_tot, ntracer), tracer_dtype)
+        self.local_tracers = self.global_tracers[self.domain.tmm_slice, :]
+        for i, tracer in enumerate(self.tracers):
+            self.local_tracers[:, i] = tracer.values[:, 0, :].T[self.domain.wet_loc]
+        recvbuf = (
+            self.global_tracers,
+            self.domain.counts * ntracer,
+            self.domain.offsets * ntracer,
+            MPI.DOUBLE,
+        )
+        sendbuf = self.local_tracers.ravel()
+        self.gather_tracer = functools.partial(
+            self.domain.tiling.comm.Iallgatherv, sendbuf, recvbuf
+        )
+        self.gather_req = self.gather_tracer()
+
     def _preload_transport_matrices(self):
         if self.Aexp_src.ndim == 2 and self.Aexp_src._use_cache:
             self.tmm_logger.info("Preloading all explicit matrices")
@@ -702,28 +720,36 @@ class Simulator(simulator.Simulator):
         if self.Aimp_src.ndim == 2 and self.Aexp_src._use_cache:
             self.tmm_logger.info("Preloading all implicit matrices")
             for itime in range(self.Aimp_src.shape[0]):
-                self.Aimp_src[itime, :]
-        
+                self.Aimp_src[itime, self.domain.tmm_slice]
+
     def transport(self, timestep: float):
-        packed_values = np.empty(self.domain.nwet_tot, self.Aexp.dtype)
-        rcvbuf = (packed_values, self.domain.counts, self.domain.offsets, MPI.DOUBLE)
-        assert self.Aexp_src._scale_factor == timestep
-        assert self.Aexp_src._power == 1
-        for tracer in self.tracers:
-            tracer_tmm = tracer.values[:, 0, :].T
+        # Compute the change in tracers due to biogeochemical [FABM] processes
+        # This is done by collecting the updated compressed state
+        # and subtracting the previous compressed state
+        fabm_tracer_change = np.empty_like(self.local_tracers)
+        for i, tracer in enumerate(self.tracers):
+            fabm_tracer_change[:, i] = tracer.values[:, 0, :].T[self.domain.wet_loc]
+        fabm_tracer_change -= self.local_tracers
 
-            # packed_values is the packed TMM-style array with tracer values
-            self.domain.tiling.comm.Allgatherv(tracer_tmm[self.domain.wet_loc], rcvbuf)
+        # Ensure the compressed global tracer state is synchronized across subdomains
+        MPI.Request.Wait(self.gather_req)
 
-            # do the explicit step
-            vtmp = self.Aexp.dot(packed_values)
-            packed_values[self.domain.tmm_slice] += vtmp
+        # Do the explicit step
+        vtmp = self.Aexp.dot(self.global_tracers)
+        self.local_tracers += vtmp
 
-            # do the implicit step
-            vtmp = self.Aimp.dot(packed_values)
+        # Add the biogeochemical/FABM tracer increment
+        self.local_tracers += fabm_tracer_change
 
-            # Copy updated tracer values back to authoratitive array
-            tracer_tmm[self.domain.wet_loc] = vtmp
+        # Do the implicit step
+        self.local_tracers[:, :] = self.Aimp.dot(self.global_tracers)
+
+        # Start synchronizing the compressed tracer state across subdomains
+        self.gather_req = self.gather_tracer()
+
+        # Copy the updated compressed state back to the uncompressed state
+        for i, tracer in enumerate(self.tracers):
+            tracer.values[:, 0, :].T[self.domain.wet_loc] = self.local_tracers[:, i]
 
     def load_environment(self, periodic: bool, calendar: str):
         root = os.path.dirname(self.domain._grid_file)
