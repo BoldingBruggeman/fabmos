@@ -243,7 +243,9 @@ class TransportMatrix(pygetm.input.LazyArray):
         comm.Scatterv(
             [self.global_indices, self._counts, self._offsets, mpi_dtype], self.indices
         )
-        self.diag_indices = self._get_diagonal_indices(self.indptr, self.indices - istartrow)
+        self.diag_indices = self._get_diagonal_indices(
+            self.indptr, self.indices - istartrow
+        )
 
         self._power = 1
         self._scale_factor = 1.0
@@ -397,7 +399,9 @@ class TransportMatrix(pygetm.input.LazyArray):
             data = vardict[self._group_name].data
         return data[self.index_map]
 
-    def create_sparse_array(self, data=None, type=scipy.sparse.csr_array) -> scipy.sparse.csr_array:
+    def create_sparse_array(
+        self, data: Optional[np.ndarray] = None, type=scipy.sparse.csr_array
+    ) -> scipy.sparse.csr_array:
         if data is None:
             data = np.empty((self.shape[-1],), self.dtype)
         return type(
@@ -584,12 +588,14 @@ def _update_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray, da: np.ndarray
     )
     grid.zc.all_values[:, grid._land] = 0.0
     grid.zf.all_values[:, grid._land] = 0.0
+    grid.domain.depth.all_values[...] = -grid.zc.all_values
     grid.ho.all_values[grid.ho.all_values == 0.0] = grid.ho.fill_value
     grid.hn.all_values[grid.hn.all_values == 0.0] = grid.hn.fill_value
     grid.ho.attrs["_time_varying"] = False
     grid.hn.attrs["_time_varying"] = False
     grid.zc.attrs["_time_varying"] = False
     grid.zf.attrs["_time_varying"] = False
+    grid.domain.depth.attrs["_time_varying"] = False
 
     grid.area.values[slc_loc] = da[slc_glob]
     grid.D.values[slc_loc] = grid.H.values[slc_loc]
