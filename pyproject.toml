@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fabmos"
-version = "0.0.1"
+#version = "0.0.1"
+dynamic = ["version"]
 authors = [
   {name = "Jorn Bruggeman", email = "jorn@bolding-bruggeman.com"}
 ]
@@ -23,3 +24,11 @@ classifiers = [
 "Homepage" = "https://github.com/BoldingBruggeman/fabmos"
 "Documentation" = "https://github.com/BoldingBruggeman/fabmos/wiki"
 "Repository" = "https://github.com/BoldingBruggeman/fabmos"
+
+[tool.setuptools]
+packages = ["fabmos"]
+
+[tool.setuptools_scm]
+write_to = "src/fabmos/_version_setup.py"
+local_scheme = "no-local-version"
+fallback_version="0.0.1"
