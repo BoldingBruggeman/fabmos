@@ -17,15 +17,11 @@ import h5py
 import pygetm
 from pygetm.constants import CENTERS, INTERFACES
 from .. import simulator
+from fabmos import __version__
 
 _comm = MPI.COMM_WORLD.Dup()
 size = _comm.Get_size()
 rank = _comm.Get_rank()
-
-verbose = True
-use_root = True
-
-matrix_types = ("periodic", "time_dependent", "constant")
 
 
 class MatArray(pygetm.input.LazyArray):
@@ -442,7 +438,7 @@ def _read_config(fn: str) -> Mapping[str, Any]:
     except OSError:
         # MATLAB < 7.3 format
         for k, v in scipy.io.loadmat(fn).items():
-            if isinstance(v, np.ndarray) and np.issubdtype(v.dtype, 'U'):
+            if isinstance(v, np.ndarray) and np.issubdtype(v.dtype, "U"):
                 v = str(v[0])
             config[k] = v
     for k in ("fixEmP", "rescaleForcing", "useAreaWeighting"):
@@ -636,7 +632,7 @@ class Simulator(simulator.Simulator):
 
         super().__init__(domain, fabm_config, fabm_libname=fabm_libname)
         self.tmm_logger = self.logger.getChild("TMM")
-        self.tmm_logger.info(f"Initializing TMM component")
+        self.tmm_logger.info(f"Initializing TMM component: {__version__}")
         _update_coordinates(self.domain.T, self.domain.dz, self.domain.da)
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_coordinates(self.domain.glob.T, self.domain.dz, self.domain.da)
@@ -857,44 +853,3 @@ class Simulator(simulator.Simulator):
             long_name="ice cover",
             fabm_standard_name="ice_area_fraction",
         )
-
-    def _tmm_matrix_config(self, config: dict):
-        assert config["matrix_type"] in matrix_types
-        assert config["path"]
-
-        if config["matrix_type"] == "constant":
-            constant = config["constant"]
-            assert constant["Ae_fname"]
-            assert constant["Ai_fname"]
-            self._matrix_paths_Ae = list(
-                os.path.join(config["path"], constant["Ae_fname"])
-            )
-            self._matrix_paths_Ai = list(
-                os.path.join(config["path"], constant["Ai_fname"])
-            )
-        if config["matrix_type"] == "periodic":
-            periodic = config["periodic"]
-            assert periodic["num_periods"] > 0
-            assert periodic["Ae_template"]
-            if "base_number" in periodic:
-                offset = periodic["base_number"]
-            else:
-                offset = 0
-            self._matrix_paths_Ae = [
-                os.path.join(
-                    config["path"],
-                    periodic["Ae_template"] % (i + offset),
-                )
-                for i in range(periodic["num_periods"])
-            ]
-            self._matrix_paths_Ai = [
-                os.path.join(
-                    config["path"],
-                    periodic["Ai_template"] % (i + offset),
-                )
-                for i in range(periodic["num_periods"])
-            ]
-
-        if config["matrix_type"] == "time_dependent":
-            print("time varying TMM matrices not implemented yet - except for periodic")
-            sys.exit()

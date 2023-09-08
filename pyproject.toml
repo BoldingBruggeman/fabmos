@@ -4,7 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fabmos"
-#version = "0.0.1"
 dynamic = ["version"]
 authors = [
   {name = "Jorn Bruggeman", email = "jorn@bolding-bruggeman.com"}
@@ -27,11 +26,6 @@ classifiers = [
 
 [tool.setuptools]
 #packages = ["fabmos"]
-#use_scm_version={
-#    'write_to': 'src/fabmos/_version_kb.py',
-#    'write_to_template': '__version__ = "{version}"',
-#    'tag_regex': r'^(?P<prefix>v)?(?P<version>[^\+]+)(?P<suffix>.*)?$',
-#}
 
 [tool.setuptools_scm]
 write_to = "src/fabmos/_version.py"
