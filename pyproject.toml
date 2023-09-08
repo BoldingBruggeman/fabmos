@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools >= 61.0.0", "wheel"]
+requires = ["setuptools >= 61.0.0", "setuptools_scm[toml]>=6.2", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -26,9 +26,15 @@ classifiers = [
 "Repository" = "https://github.com/BoldingBruggeman/fabmos"
 
 [tool.setuptools]
-packages = ["fabmos"]
+#packages = ["fabmos"]
+#use_scm_version={
+#    'write_to': 'src/fabmos/_version_kb.py',
+#    'write_to_template': '__version__ = "{version}"',
+#    'tag_regex': r'^(?P<prefix>v)?(?P<version>[^\+]+)(?P<suffix>.*)?$',
+#}
 
 [tool.setuptools_scm]
-write_to = "src/fabmos/_version_setup.py"
-local_scheme = "no-local-version"
+write_to = "src/fabmos/_version.py"
+#local_scheme = "no-local-version"
+local_scheme = "dirty-tag"
 fallback_version="0.0.1"

@@ -6,3 +6,4 @@ __pycache__
 *.prof
 /src/fabmos.egg-info
 /src/fabmos/fabm_tmm.dll
+src/fabmos/_version.py
