@@ -2,26 +2,26 @@ import sys
 import os
 import functools
 import datetime
+import logging
 from typing import Optional, Tuple, Iterable, Union, Mapping, Any
 
-import scipy.sparse
-
-import xarray as xr
 import numpy as np
 import numpy.typing as npt
+import scipy.sparse
 import cftime
-from mpi4py import MPI
-import mpi4py.util.dtlib
+import xarray as xr
 import h5py
 
 import pygetm
+import pygetm.parallel
 from pygetm.constants import CENTERS, INTERFACES
 from .. import simulator
 from fabmos import __version__
 
-_comm = MPI.COMM_WORLD.Dup()
-size = _comm.Get_size()
-rank = _comm.Get_rank()
+# Note: mpi4py components should be imported after pygetm.parallel,
+# as the latter configures mpi4py.rc
+from mpi4py import MPI
+import mpi4py.util.dtlib
 
 
 class MatArray(pygetm.input.LazyArray):
@@ -406,9 +406,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         )
 
 
-def _read_grid(fn: str, logger=None):
-    if rank == 0 and logger:
-        logger.info(f"Reading grid information from: {fn}")
+def _read_grid(fn: str):
     if not os.path.isfile(fn):
         raise Exception(f"Grid file {fn} does not exist")
     with h5py.File(fn) as ds:
@@ -461,11 +459,15 @@ def _load_mat(
     return values[0] if len(names) == 1 else tuple(values)
 
 
-def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
+def create_domain(
+    path: str, logger: Optional[logging.Logger] = None, comm: Optional[MPI.Comm] = None
+) -> pygetm.domain.Domain:
     if os.path.isdir(path):
         path = os.path.join(path, "grid.mat")
 
-    bathy, ideep, lon, lat, z, dz, da, delta_t = _read_grid(path, logger=logger)
+    logger = logger or pygetm.parallel.get_logger()
+    logger.info(f"Reading grid information from: {path}")
+    bathy, ideep, lon, lat, z, dz, da, delta_t = _read_grid(path)
 
     # If x,y coordinates are effectively 1D, transpose latitude to ensure
     # its singleton dimension comes last (x)
@@ -483,7 +485,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
     H_packed = H[mask_hz]
 
     # Simple subdomain division along x dimension
-    tiling = pygetm.parallel.Tiling(nrow=1, ncol=_comm.size, comm=_comm)
+    tiling = pygetm.parallel.Tiling(nrow=1, comm=comm)
 
     nx, ny, nz = lon_packed.shape[-1], 1, bathy.shape[0]
     domain = pygetm.domain.create(
@@ -496,6 +498,7 @@ def create_domain(path: str, logger=None) -> pygetm.domain.Domain:
         H=H_packed[np.newaxis, :],
         spherical=True,
         tiling=tiling,
+        logger=logger,
     )
 
     slc_loc, slc_glob, shape_loc, _ = domain.tiling.subdomain2slices()
