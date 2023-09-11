@@ -643,7 +643,7 @@ class Simulator(simulator.Simulator):
         root = os.path.dirname(self.domain._grid_file)
         config = _read_config(os.path.join(root, "config_data.mat"))
         Ir_pre = _load_mat(
-            os.path.join(config["matrixPath"], "Data/profile_data.mat"),
+            os.path.join(root, config["matrixPath"], "Data/profile_data.mat"),
             "Ir_pre",
             dtype=int,
         )
