@@ -2,6 +2,7 @@ import datetime
 from typing import List, Union, Optional, Tuple, Sequence
 import timeit
 import pstats
+import functools
 
 import cftime
 
@@ -9,7 +10,24 @@ import pygetm
 from . import environment
 
 
+def log_exceptions(method):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except Exception as e:
+            logger = getattr(self, "logger", None)
+            domain = getattr(self, "domain", None)
+            if logger is None or domain is None or domain.tiling.n == 1:
+                raise
+            logger.exception(str(e), stack_info=True, stacklevel=3)
+            domain.tiling.comm.Abort(1)
+
+    return wrapper
+
+
 class Simulator:
+    @log_exceptions
     def __init__(
         self,
         domain: pygetm.domain.Domain,
@@ -50,6 +68,7 @@ class Simulator:
     def __getitem__(self, key: str) -> pygetm.core.Array:
         return self.output_manager.fields[key]
 
+    @log_exceptions
     def start(
         self,
         time: Union[cftime.datetime, datetime.datetime],
@@ -100,6 +119,7 @@ class Simulator:
             self._profile = (profile, pr)
             pr.enable()
 
+    @log_exceptions
     def advance(self):
         self.time += self.timedelta
         self.istep += 1
@@ -133,6 +153,7 @@ class Simulator:
     def transport(self, timestep: float):
         self.logger.debug(f"transport advancing to {self.time} (dt={timestep} s)")
 
+    @log_exceptions
     def finish(self):
         if self._profile:
             name, pr = self._profile
