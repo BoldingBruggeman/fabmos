@@ -11,6 +11,7 @@ FABM_CONFIG = dict(
     instances=dict(
         tracer=dict(
             model="bb/passive",
+            parameters=dict(conserved=True)
         ),
     )
 )
