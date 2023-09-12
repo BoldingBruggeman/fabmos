@@ -1,14 +1,19 @@
 import cftime
+from typing import Union
+
+import numpy as np
+import xarray as xr
 
 import pyairsea
 from pyairsea import AlbedoMethod
+import pygsw
 import fabmos
-from pygetm.constants import FILL_VALUE
+from pygetm.constants import FILL_VALUE, CENTERS
 
 
 class ShortWaveRadiation:
     def __init__(self, grid: fabmos.domain.Grid):
-        self.logger = grid.domain.root_logger.getChild('ShortWaveRadiation')
+        self.logger = grid.domain.root_logger.getChild("ShortWaveRadiation")
         self.lon = grid.lon
         self.lat = grid.lat
         self.tcc = grid.array(
@@ -71,3 +76,57 @@ class ShortWaveRadiation:
             self.albedo_method, self.zen.all_values, yday, self.albedo.all_values
         )
         self.swr.all_values *= 1.0 - self.albedo.all_values
+
+
+def _broadcast_coordinate(
+    c: xr.DataArray, t: xr.DataArray
+) -> Union[xr.DataArray, np.ndarray]:
+    if c.ndim == t.ndim:
+        return c
+    s = [np.newaxis] * t.ndim
+    for i, d in enumerate(t.dims):
+        if d in c.dims:
+            s[i] = slice(None)
+    return np.asarray(c)[tuple(s)]
+
+
+def density(salt: xr.DataArray, temp: xr.DataArray) -> xr.DataArray:
+    lon = _broadcast_coordinate(salt.getm.longitude, salt)
+    lat = _broadcast_coordinate(salt.getm.latitude, salt)
+    pres = _broadcast_coordinate(salt.getm.z, salt)
+    rho = LazyDensity(salt.variable, temp.variable, lon, lat, pres)
+    rho_xr = xr.DataArray(rho, coords=salt.coords, dims=salt.dims)
+    return rho_xr
+
+
+class LazyDensity(fabmos.input.Operator):
+    def __init__(
+        self,
+        salt: Union[np.ndarray, xr.Variable],
+        temp: Union[np.ndarray, xr.Variable],
+        lon: Union[np.ndarray, xr.Variable],
+        lat: Union[np.ndarray, xr.Variable],
+        pres: Union[np.ndarray, xr.Variable],
+    ):
+        # Accept longitude, latitude, pressure in anticipation of a need to
+        # convert between in-situ/potential/conservative temperature, and
+        # practical/absolute salinity
+        if np.all(pres < 0):
+            pres = -pres
+        lon = np.asarray(lon, dtype=float)
+        lat = np.asarray(lat, dtype=float)
+        pres = np.asarray(pres, dtype=float)
+        super().__init__(salt, temp, lon, lat, pres, passthrough=True)
+
+    def apply(self, salt, temp, lon, lat, pres, dtype=None) -> np.ndarray:
+        salt = np.asarray(salt, dtype=float)
+        temp = np.asarray(temp, dtype=float)
+        rho = np.empty_like(temp)
+        salt, temp, pres = np.broadcast_arrays(salt, temp, pres)
+        pygsw.rho(
+            salt.ravel(),
+            temp.ravel(),
+            pres.ravel(),
+            rho.ravel(),
+        )
+        return rho

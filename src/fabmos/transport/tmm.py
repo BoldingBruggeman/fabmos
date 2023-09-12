@@ -15,7 +15,7 @@ import h5py
 import pygetm
 import pygetm.parallel
 from pygetm.constants import CENTERS, INTERFACES
-from .. import simulator
+from .. import simulator, environment
 from fabmos import __version__
 
 # Note: mpi4py components should be imported after pygetm.parallel,
@@ -808,7 +808,9 @@ class Simulator(simulator.Simulator):
 
         times = climatology_times(calendar)
 
-        def _get_variable(path: str, varname: str, **kwargs) -> pygetm.core.Array:
+        def _get_variable(
+            path: str, varname: str, **kwargs
+        ) -> Tuple[pygetm.core.Array, xr.DataArray]:
             array = self.domain.T.array(**kwargs)
             src = get_mat_array(
                 path,
@@ -816,13 +818,13 @@ class Simulator(simulator.Simulator):
                 self.domain._grid_file,
                 times=times,
             )
-            if periodic:
-                array.set(src, on_grid=pygetm.input.OnGrid.ALL, climatology=True)
-            else:
-                array.set(src.mean(dim="time"), on_grid=pygetm.input.OnGrid.ALL)
-            return array
+            if not periodic:
+                src = src.mean(dim="time")
+                array.attrs["_time_varying"] = False
+            array.set(src, on_grid=pygetm.input.OnGrid.ALL, climatology=periodic)
+            return array, src
 
-        self.temp = _get_variable(
+        self.temp, temp_src = _get_variable(
             os.path.join(root, "GCM/Theta_gcm.mat"),
             "Tgcm",
             z=CENTERS,
@@ -831,7 +833,7 @@ class Simulator(simulator.Simulator):
             long_name="temperature",
             fabm_standard_name="temperature",
         )
-        self.salt = _get_variable(
+        self.salt, salt_src = _get_variable(
             os.path.join(root, "GCM/Salt_gcm.mat"),
             "Sgcm",
             z=CENTERS,
@@ -840,7 +842,21 @@ class Simulator(simulator.Simulator):
             long_name="salinity",
             fabm_standard_name="practical_salinity",
         )
-        self.wind = _get_variable(
+        if self.fabm.has_dependency("density"):
+            self.rho = self.domain.T.array(
+                z=CENTERS,
+                name="rho",
+                units="kg m-3",
+                long_name="density",
+                fabm_standard_name="density",
+            )
+            self.rho.set(
+                environment.density(salt_src, temp_src),
+                on_grid=pygetm.input.OnGrid.ALL,
+                climatology=periodic,
+            )
+
+        self.wind, _ = _get_variable(
             os.path.join(root, "BiogeochemData/wind_speed.mat"),
             "windspeed",
             name="wind",
@@ -848,7 +864,7 @@ class Simulator(simulator.Simulator):
             long_name="wind speed",
             fabm_standard_name="wind_speed",
         )
-        self.fice = _get_variable(
+        self.fice, _ = _get_variable(
             os.path.join(root, "BiogeochemData/ice_fraction.mat"),
             "Fice",
             name="ice",
