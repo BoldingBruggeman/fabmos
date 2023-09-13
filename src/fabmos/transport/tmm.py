@@ -545,6 +545,7 @@ def create_domain(
     domain._delta_t = delta_t
 
     if domain.tiling.rank == 0:
+        logger.info("Creating uncompressed global domain for output")
         tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1)
         tiling.rank = 0
         full_domain = pygetm.domain.create(
