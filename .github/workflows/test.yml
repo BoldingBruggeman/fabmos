@@ -43,6 +43,9 @@ jobs:
       - name: Compile and install fabmos
         run: |
           pip install -vv ./fabmos
+      - name: Install fabmos dependencies
+        run: |
+          conda install -c conda-forge h5py
       - name: Download and extract TMM setup
         run: |
           mkdir TMM
