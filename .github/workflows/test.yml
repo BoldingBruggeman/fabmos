@@ -39,11 +39,11 @@ jobs:
           source ./install
       - name: Compile and install pyfabm
         run: |
-          pip install fabmos/extern/fabm
+          pip install -vv ./fabmos/extern/fabm
       - name: Compile and install fabmos
         run: |
-          pip install fabmos
-      - name: Download TMM setup
+          pip install -vv ./fabmos
+      - name: Download and extract TMM setup
         run: |
           mkdir TMM
           cd TMM
