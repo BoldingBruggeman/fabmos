@@ -31,7 +31,7 @@ jobs:
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
-          environment-file: environment-min.yml
+          environment-file: getm-rewrite/environment-min.yml
           activate-environment: pygetm
       - name: Compile and install pygetm
         run: |
