@@ -15,7 +15,7 @@ jobs:
           python-version: ["3.9"] #["3.8", "3.9", "3.10", "3.11"]
       steps:
       - name: Install dependencies
-        run: sudo apt-get install gfortran-9 mpich
+        run: sudo apt-get install mpich
       - name: Clone pygetm
         uses: actions/checkout@v4
         with:
@@ -47,8 +47,8 @@ jobs:
         run: |
           mkdir TMM
           cd TMM
-          wget http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar
-          tax -xvf MITgcm_2.8deg.tar
+          wget -q http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar
+          tar -xvf MITgcm_2.8deg.tar
       - name: Run TMM setup in serial
         run: |
           cd TMM
