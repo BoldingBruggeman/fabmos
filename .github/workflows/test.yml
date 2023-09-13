@@ -48,19 +48,13 @@ jobs:
           conda install -c conda-forge h5py
       - name: Download and extract TMM setup
         run: |
-          mkdir TMM
-          cd TMM
           wget -q http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar
           tar -xvf MITgcm_2.8deg.tar
       - name: Run TMM setup in serial
         run: |
-          cd TMM
+          cd MITgcm_2.8deg
           python ../fabmos/examples/tmm_tracer.py --stop_time="2001-02-01 00:00:00"
       - name: Run TMM setup in parallel
         run: |
-          cd TMM
+          cd MITgcm_2.8deg
           mpiexec -n 2 python ../fabmos/examples/tmm_tracer.py --stop_time="2001-02-01 00:00:00"
-
-
-
-          
