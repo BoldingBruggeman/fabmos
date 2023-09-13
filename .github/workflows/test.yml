@@ -1,0 +1,63 @@
+name: Build and test
+on: push
+jobs:
+   gfortran:
+      runs-on: ${{ matrix.os }}
+      env:
+        RDMAV_FORK_SAFE: 1
+      defaults:
+        run:
+          shell: bash -el {0}
+      strategy:
+        fail-fast: false
+        matrix:
+          os: ["ubuntu-latest"] #, "macos-latest", "windows-latest"]
+          python-version: ["3.9"] #["3.8", "3.9", "3.10", "3.11"]
+      steps:
+      - name: Install dependencies
+        run: sudo apt-get install gfortran-9 mpich
+      - name: Clone pygetm
+        uses: actions/checkout@v4
+        with:
+           repository: BoldingBruggeman/getm-rewrite
+           submodules: recursive
+           path: getm-rewrite
+      - name: Clone fabmos
+        uses: actions/checkout@v4
+        with:
+           submodules: recursive
+           path: fabmos
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: ${{ matrix.python-version }}
+          environment-file: environment-min.yml
+          activate-environment: pygetm
+      - name: Compile and install pygetm
+        run: |
+          cd getm-rewrite
+          source ./install
+      - name: Compile and install pyfabm
+        run: |
+          pip install fabmos/extern/fabm
+      - name: Compile and install fabmos
+        run: |
+          pip install fabmos
+      - name: Download TMM setup
+        run: |
+          mkdir TMM
+          cd TMM
+          wget http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar
+          tax -xvf MITgcm_2.8deg.tar
+      - name: Run TMM setup in serial
+        run: |
+          cd TMM
+          python ../fabmos/examples/tmm_tracer.py --stop_time="2001-02-01 00:00:00"
+      - name: Run TMM setup in parallel
+        run: |
+          cd TMM
+          mpiexec -n 2 python ../fabmos/examples/tmm_tracer.py --stop_time="2001-02-01 00:00:00"
+
+
+
+          
