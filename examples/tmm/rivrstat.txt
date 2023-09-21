@@ -1,0 +1,988 @@
+Paper number 96JD00932, An extended data set of river discharges for validation of general circulation
+models, by G. D. Perry, P. B. Duffy, and N. L. Miller.
+Copyright 1996 by the American Geophysical Union.
+
+ River                                                                   Number of  Arithmetic  Standard       
+ Number River Name                 Country              Lat.     Lon.     Sources      Mean     Deviation  Global Sum
+                                                                                                               
+    1   Amazon                     Brazil                0.0    310.0       11       192918.2   12859.0     192918.2
+    2   Zaire                      Zaire                -6.0     12.5        9        40755.6    1483.3     233673.8
+    3   Ganges/Brahmaputra         Bangladesh           22.0     91.0       11        34000.0    3498.1     267673.8
+    4   Orinoco                    Venezuela             9.0    299.0        8        30950.0    3810.5     298623.8
+    5   Chang Jiang (Yangtze)      China                31.5    122.0       15        28863.3    3576.8     327487.1
+    6   Yenisei                    Russia               72.0     82.0       10        18350.0    1001.2     345837.1
+    7   Parana (Plata)             Argentina           -35.0    303.0        8        16387.5    1511.2     362224.6
+    8   Mississippi                USA                  29.0    271.0       12        16287.5    2082.9     378512.1
+    9   Lena                       Russia               73.0    127.0        8        16287.5     398.2     394799.6
+   10   Mekong                     Vietnam              10.0    106.0        8        14850.0    1880.8     409649.6
+   11   Irrawaddy                  Burma                16.0     95.0        4        13425.0     471.0     423074.6
+   12   Ob                         Russia               72.0     73.0        9        12738.9     557.7     435813.5
+   13   Saint Lawrence             Canada               49.5    295.5        9        11458.9    1483.1     447272.4
+   14   Tocantins                  Brazil               -0.5    311.5        5        10400.0    1186.6     457672.4
+   15   Amur                       Russia               53.0    141.0        7        10185.7     527.6     467858.1
+   16   Xi (Zhu Jiang) (Pearl)     China                22.2    113.4        8         9611.3    1882.0     477469.4
+   17   MacKenzie                  Canada               69.0    225.0        8         9013.8    1076.3     486483.3
+   18   Columbia                   USA                  46.3    236.0        6         7460.0     455.9     493943.3
+   19   Magdalena                  Colombia             11.0    285.0        4         7325.0     465.7     501268.3
+   20   Yukon                      USA                  63.0    195.0       10         6412.0     552.4     507680.3
+   21   Danube                     Romania              45.2     29.7        7         6365.0     141.6     514045.3
+   22   Indus                      Pakistan             24.0     67.5        7         6092.9    1122.3     520138.2
+   23   Salween                    Burma                16.5     97.0        2         5750.0    4250.0     525888.1
+   24   Niger                      Nigeria              -4.0      6.0        6         5533.3     575.7     531421.4
+   25   Sepik                      Papua New Guinea     -3.8    144.5        2         5150.0    1350.0     536571.4
+   26   Fly                        Papua New Guinea     -9.0    143.0        4         4960.0    2752.6     541531.4
+   27   Ogooue                     Gabon                -1.0      9.0        3         4686.7      12.5     546218.1
+   28   Uruguay                    Argentina           -35.0    303.8        7         4618.6     529.1     550836.8
+   29   Bengawan Sala              Indonesia            -6.8    112.6        2         4240.0    3360.0     555076.8
+   30   Zambezi                    Mozambique          -18.7     36.5        6         4121.7    2093.1     559198.4
+   31   Pechora                    Russia               68.0     54.0        4         4052.5      35.6     563250.9
+   32   Red (Hungho) (Sankai)      Vietnam              20.5    106.5        2         3750.0     150.0     567000.9
+   33   Fraser                     Canada               49.5    236.5        6         3590.0     210.9     570590.9
+   34   Meghna                     Bangladesh           22.5     91.0        1         3515.0       0.0     574105.9
+   35   Severnaya Dvina            Russia               64.5     41.0        9         3418.9      87.6     577524.8
+   36   Godavari                   India                16.5     82.0        8         3250.0     447.8     580774.8
+   37   Khatanga-Popigay           Russia               73.0    107.0        2         3240.0      40.0     584014.8
+   38   Sao Francisco              Brazil              -10.5    323.5       11         3087.7     364.1     587102.5
+   39   Kolyma                     Russia               69.0    161.0        6         2985.0     740.5     590087.5
+   40   Neva                       Russia               59.9     30.3        7         2524.3      41.0     592611.8
+   41   Pyasina                    Russia               73.5     87.0        5         2512.0     135.6     595123.8
+   42   Nelson                     Canada               57.0    268.0        7         2495.0     200.3     597618.8
+   43   Koksoak                    Canada               58.0    292.0        3         2460.0      63.8     600078.8
+   44   Tarum                      Indonesia            -6.0    107.0        1         2400.0       0.0     602478.8
+   45   Purari                     Papua New Guinea     -8.0    145.0        3         2376.7      63.4     604855.5
+   46   Usumacinta                 Mexico               18.0    267.0        5         2339.0     791.6     607194.5
+   47   Atrato                     Colombia              8.4    283.0        1         2275.0       0.0     609469.5
+   48   Rhine (Rhein)              Netherlands          52.0      4.0        6         2246.7      53.7     611716.2
+   49   Essequibo                  Guyana                7.0    301.5        3         2198.3      19.3     613914.5
+   50   Sanaga                     Cameroon              4.0     10.0        4         2087.5      71.5     616002.0
+   51   San Juan                   Colombia              4.2    283.4        1         2010.0       0.0     618012.0
+   52   Mahanadi                   India                20.0     87.0        6         2008.3     158.8     620020.3
+   53   Corantijn                  Surinam               6.0    302.8        1         2000.0       0.0     622020.3
+   54   Min                        China                26.1    119.7        2         1905.0      55.0     623925.3
+   55   Krishna (Kistna)           India                16.0     81.0        5         1894.0     185.1     625819.3
+   56   Maroni (Marowijne)         Surinam               5.8    306.0        4         1877.5      82.9     627696.8
+   57   Nile                       Egypt                31.5     31.0       10         1829.5     787.8     629526.3
+   58   Mobile                     USA                  30.2    272.0        4         1752.5      93.6     631278.8
+   59   La Grande                  Canada               53.8    281.0        3         1720.0      24.5     632998.8
+   60   Saguenay                   Canada               48.1    290.2        5         1701.0     116.1     634699.8
+   61   Churchill 1                Canada               54.4    302.5        3         1686.7     123.6     636386.5
+   62   Indigirka                  Russia               71.0    150.0        7         1631.4     111.5     638017.9
+   63   Dnieper                    Ukraine              46.5     32.3        6         1630.8      69.4     639648.7
+   64   Rhone                      France               43.5      4.5        8         1630.0      71.4     641278.7
+   65   Tanduj                     Indonesia            -7.7    108.8        1         1595.0       0.0     642873.7
+   66   Taz                        Russia               67.7     78.7        1         1540.0       0.0     644413.7
+   67   Kuskokwim                  USA                  60.0    162.5        5         1503.0     323.4     645916.7
+   68   Guayas                     Ecuador              -2.5    280.0        1         1490.0       0.0     647406.7
+   69   Tsientang                  China                30.2    120.3        1         1490.0       0.0     648896.7
+   70   Po                         Italy                45.0     12.5        9         1476.7      38.6     650373.4
+   71   Shatt-al-Arab              Iraq                 30.0     49.0        6         1445.0     284.2     651818.4
+   72   Narmada                    India                21.5     72.5        3         1401.7     232.9     653220.1
+   73   Huang He (Yellow)          China                38.0    119.0       11         1361.4     155.2     654581.4
+   74   Copper                     USA                  60.5    215.0        5         1344.0     286.8     655925.4
+   75   Skeena                     Canada               54.1    230.0        4         1331.3     413.9     657256.8
+   76   Manuk                      Indonesia            -6.2    108.2        1         1300.0       0.0     658556.8
+   77   Cuyuni                     Guyana                7.0    301.7        1         1280.0       0.0     659836.8
+   78   Stikine                    USA                  56.5    227.8        4         1257.5     360.7     661094.3
+   79   Albany                     Canada               52.5    278.0        3         1255.0     219.4     662349.3
+   80   Anadyr                     Russia               64.7    177.0        2         1247.5     772.5     663596.8
+   81   Abitibi (Moose)            Canada               51.5    279.0        4         1218.8     248.6     664815.6
+   82   Volta                      Ghana                 5.8      0.3        3         1186.7      57.3     666002.3
+   83   Mazaruni                   Guyana                7.0    301.4        1         1150.0       0.0     667152.3
+   84   Nottaway                   Canada               51.3    281.4        4         1142.5      66.1     668294.8
+   85   Thelon                     Canada               63.5    269.0        2         1105.5     264.5     669400.3
+   86   Susitna                    USA                  60.0    208.0        4         1097.5     476.1     670497.8
+   87   Churchill 2                Canada               58.5    265.9        4         1090.0     158.9     671587.8
+   88   Punagara                   Indonesia            -6.2    107.8        1         1070.0       0.0     672657.8
+   89   Wisla (Vistula)            Poland               54.5     19.0        7         1040.0      47.7     673697.8
+   90   Yalu                       North Korea          39.9    124.3        1         1040.0       0.0     674737.8
+   91   Susquehanna                USA                  39.5    284.0        6         1005.8      43.7     675743.6
+   92   Tsiribihina                Madagascar          -19.7     44.3        1         1000.0       0.0     676743.6
+   93   Bei                        China                22.2    113.2        1         1000.0       0.0     677743.6
+   94   Udjung                     Indonesia            -5.9    106.3        1         1000.0       0.0     678743.6
+   95   Taymyra                    Russia               75.4     99.2        1          990.0       0.0     679733.6
+   96   Olenek                     Russia               73.0    120.0        5          989.6     151.1     680723.2
+   97   Manicouagan                Canada               49.5    299.5        3          979.0      91.7     681702.2
+   98   Doce                       Brazil              -19.5    320.2        1          970.0       0.0     682672.2
+   99   Saint John                 Canada               49.5    299.5        4          969.0     158.8     683641.2
+  100   Yana                       Russia               71.0    136.0        5          935.0      43.7     684576.2
+  101   Papaloapan                 Mexico               18.7    264.4        2          930.0     310.0     685506.2
+  102   Pur                        Russia               67.5     78.0        4          928.0      71.1     686434.2
+  103   Kouilou                    Congo                -4.5     11.5        3          926.7      53.9     687360.9
+  104   Han                        China                23.5    116.8        1          922.0       0.0     688282.9
+  105   Eastmain                   Canada               52.2    281.7        4          918.0      17.3     689200.9
+  106   Nass                       Canada               54.7    229.7        3          896.3      47.9     690097.2
+  107   Nushagak                   USA                  59.0    201.0        3          886.7     174.6     690983.9
+  108   Rupert                     Canada               51.3    281.5        4          885.8      15.1     691869.7
+  109   Negro                      Argentina           -41.0    297.0        5          881.0     128.5     692750.7
+  110   Willamette                 USA                  46.3    236.0        2          875.0     185.0     693625.7
+  111   George                     Canada               58.5    294.0        4          874.3      63.4     694500.0
+  112   Kamchatka                  Russia               56.2    162.3        5          872.8     116.2     695372.8
+  113   Loire                      France               47.5    357.5        5          855.4      29.0     696228.2
+  114   Don                        Russia               47.1     39.3        7          850.7      46.9     697078.9
+  115   Alsek                      USA                  59.1    221.5        1          850.0       0.0     697928.9
+  116   Chao Phraya                Thailand             13.6    100.6        3          848.0      50.9     698776.9
+  117   Parnaiba                   Brazil               -2.8    318.2        1          843.0       0.0     699619.9
+  118   Cuanza                     Angola               -9.2     13.0        1          836.0       0.0     700455.9
+  119   Baker                      Chile               -47.8    285.0        3          828.3     168.1     701284.2
+  120   Brantas                    Indonesia            -7.2    112.7        1          810.0       0.0     702094.2
+  121   Esmeraldas                 Ecuador               1.0    280.4        2          803.0      19.0     702897.2
+  122   Uda                        Russia               54.4    135.3        1          800.0       0.0     703697.2
+  123   Kaveri (Cauvery)           India                11.3     79.8        2          799.0     135.0     704496.2
+  124   Mesen                      Russia               66.5     43.9        3          789.3     101.3     705285.5
+  125   Dong                       China                22.3    113.8        1          762.0       0.0     706047.5
+  126   Oyapock                    French Guiana         4.2    308.3        3          761.7     174.8     706809.2
+  127   Ebro                       Spain                40.5      0.5        6          753.5     419.8     707562.7
+  128   Elbe                       Germany              54.0      9.0        3          745.3      35.3     708308.0
+  129   Saint Maurice              Canada               49.5    299.5        2          744.5      11.5     709052.5
+  130   Bio-Bio                    Chile               -36.8    286.9        5          729.0     268.6     709781.5
+  131   Mindanao                   Philippines           7.2    124.2        1          725.6       0.0     710507.1
+  132   Penzhina                   Russia               62.5    165.0        3          710.3      10.3     711217.4
+  133   Sacramento                 USA                  37.8    237.4        3          700.7      51.4     711918.1
+  134   Glamma (Gloma)             Norway               59.1     10.8        5          696.6      19.3     712614.8
+  135   Paraiba                    Brazil              -21.5    319.0        3          695.7     259.2     713310.4
+  136   Grande de la Baleine       Canada               55.2    282.5        3          675.7       7.7     713986.1
+  137   Santa Cruz                 Argentina           -50.2    291.5        1          675.0       0.0     714661.1
+  138   Puelo                      Chile               -41.8    287.0        1          670.0       0.0     715331.1
+  139   Arnaud                     Canada               60.0    290.0        2          662.5       8.5     715993.6
+  140   Apalachicola               USA                  29.7    275.0        4          655.5      55.3     716649.1
+  141   Nyanga                     Gabon                 5.2    357.0        1          650.0       0.0     717299.1
+  142   Hayes                      Canada               57.0    268.0        2          641.5      52.5     717940.6
+  143   Murray 1                   Australia           -35.5    139.0        5          641.0     141.5     718581.6
+  144   Rufiji                     Tanzania             -8.0     39.5        2          630.0     345.0     719211.6
+  145   Brahmani                   India                20.7     86.9        2          627.5      46.5     719839.1
+  146   Garonne                    France               45.5    359.0        5          622.4      32.0     720461.5
+  147   Nadym                      Russia               66.1     72.5        1          610.0       0.0     721071.5
+  148   Ou (Wu)                    China                28.0    120.8        1          608.0       0.0     721679.5
+  149   Clutha                     New Zealand         -46.4    169.8        3          604.0     119.4     722283.5
+  150   Taku                       USA                  58.2    223.3        1          600.0       0.0     722883.5
+  151   Colville                   USA                  70.3    209.0        1          600.0       0.0     723483.5
+  152   Senegal                    Senegal              16.5    343.5        8          594.3     214.0     724077.8
+  153   Neman                      Lithuania            55.0     21.0        6          594.0      57.1     724671.8
+  154   Rompido de Samaria         Mexico               18.6    267.5        1          592.0       0.0     725263.8
+  155   Kvichak                    USA                  58.5    202.5        1          590.0       0.0     725853.8
+  156   Daugava                    Latvia               57.1     24.1        5          586.0      98.9     726439.8
+  157   Vuoksi                     Russia               60.0     29.0        3          582.0      12.0     727021.8
+  158   Riviere aux Feuilles       Canada               58.8    290.0        4          581.3      24.2     727603.1
+  159   Kelantan                   Malaysia              6.2    102.2        2          578.5      18.5     728181.6
+  160   Agusan                     Philippines           9.0    125.5        2          572.0      33.0     728753.6
+  161   San Juan                   Nicaragua            10.9    276.3        2          572.0       8.0     729325.6
+  162   Riviere a la Baleine       Canada               58.0    292.0        3          565.0      19.9     729890.6
+  163   Gota-Vanern                Sweden               58.0     12.0        6          554.0      19.7     730444.6
+  164   Pahang                     Malaysia              3.5    103.6        1          550.0       0.0     730994.6
+  165   Cross                      Nigeria               4.3      8.5        1          548.0       0.0     731542.6
+  166   Kemijoki                   Finland              65.7     24.5        6          545.3      21.1     732087.9
+  167   Odra (Oder)                Poland               54.0     14.5        6          544.5      23.9     732632.4
+  168   Moa                        Sierra Leone          6.9    348.5        1          533.0       0.0     733165.4
+  169   Back                       Canada               68.0    264.0        4          530.8      52.3     733696.3
+  170   Mangoky                    Madagascar          -21.3     43.5        2          529.5      70.5     734225.8
+  171   Severn                     Canada               56.0    272.6        5          529.0     152.9     734754.8
+  172   Winisk                     Canada               55.5    275.0        3          522.7     121.8     735277.4
+  173   Shinano                    Japan                37.9    139.0        2          522.0      19.0     735799.4
+  174   Petit Mecatina             Canada               50.4    300.5        4          514.3       8.8     736313.8
+  175   Klamath                    USA                  41.6    235.9        5          509.3      18.6     736823.1
+  176   Han                        South Korea          37.8    126.4        2          507.5      22.5     737330.6
+  177   Onega                      Russia               63.8     38.0        5          507.2      34.9     737837.8
+  178   Thaanne-Thlewiatza         Canada               60.4    265.3        1          507.0       0.0     738344.8
+  179   Kivchak                    United States        58.7    202.5        1          502.0       0.0     738846.8
+  180   Douro                      Portugal             41.1    351.3        4          500.5     122.3     739347.3
+  181   Grande                     Nicaragua            12.6    276.5        1          491.0       0.0     739838.3
+  182   Kazan                      Canada               63.5    269.0        2          489.0      55.0     740327.3
+  183   Lulealven                  Sweden               65.4     22.0        6          484.7      23.1     740811.9
+  184   Connecticut                USA                  41.3    287.6        4          482.8      34.0     741294.8
+  185   Ishikari                   Japan                43.3    141.4        2          480.0      11.0     741774.8
+  186   Buller                     New Zealand         -44.4    171.4        2          476.0      25.0     742250.8
+  187   Angermanalven              Sweden               62.8     18.0        7          475.9      15.7     742726.6
+  188   Skagit                     USA                  48.3    237.6        1          475.0       0.0     743201.6
+  189   Moisie                     Canada               50.1    293.5        2          474.5      15.5     743676.1
+  190   Tapi                       India                21.4     72.6        3          469.3     138.1     744145.4
+  191   Jiulong                    China                24.4    118.0        1          466.0       0.0     744611.4
+  192   Jequitinhonha              Brazil              -15.8    321.0        3          465.0      65.6     745076.4
+  193   Hudson                     USA                  40.6    286.0        5          458.8     106.0     745535.3
+  194   Karun                      Iran                 30.0     48.8        2          455.0     130.0     745990.3
+  195   Panuco                     Mexico               22.2    262.2        3          454.7      88.9     746444.9
+  196   Attawapiskat               Canada               52.6    277.8        3          453.3     131.0     746898.3
+  197   Ikopa                      Madagascar          -15.5     46.5        2          451.0      11.0     747349.3
+  198   Indalsalven                Sweden               62.5     17.4        3          450.3       7.1     747799.6
+  199   Valdivia                   Chile               -39.8    286.4        1          450.0       0.0     748249.6
+  200   Umealven                   Sweden               63.7     20.3        2          442.5       7.5     748692.1
+  201   Balsas                     Mexico               17.9    257.9        1          439.0       0.0     749131.1
+  202   Narva                      Estonia              59.4     28.0        2          433.0      17.0     749564.1
+  203   Harricana                  Canada               51.5    280.5        3          431.3     130.3     749995.4
+  204   Anabar                     Russia               73.1    113.4        4          422.5      48.8     750417.9
+  205   Delaware                   USA                  39.2    284.8        5          421.6      86.8     750839.5
+  206   Saint Paul                 Liberia               6.3    349.2        2          416.5     203.5     751256.0
+  207   Cortzacoalcos              Mexico               18.1    265.5        1          413.0       0.0     751669.0
+  208   Rioni                      Georgia              42.2     41.6        3          409.7       8.2     752078.7
+  209   Mae Klong                  Thailand             13.2    100.0        1          408.0       0.0     752486.7
+  210   Natashquan                 Canada               50.3    298.0        3          405.0      14.8     752891.7
+  211   Aux Outardes               Canada               49.5    299.5        2          399.5       0.5     753291.2
+  212   Coppename                  Suriname              5.8    304.0        2          398.5      71.5     753689.7
+  213   Olfusa                     Iceland              63.8    339.2        3          395.0      32.3     754084.7
+  214   Kobuk                      USA                  67.0    198.0        3          394.3     108.6     754479.0
+  215   Altamaha                   USA                  31.3    278.7        4          386.3      15.9     754865.3
+  216   Seine                      France               49.5      0.5        2          385.0     115.0     755250.3
+  217   Tortuguero                 Costa Rica           10.6    276.5        1          385.0       0.0     755635.3
+  218   Mahi                       India                21.5     72.5        2          378.5       4.5     756013.8
+  219   Thjorsa                    Iceland              63.8    339.2        4          378.5      14.8     756392.3
+  220   Neretva                    Croatia              43.1     17.5        1          378.0       0.0     756770.3
+  221   Betsiamites                Canada               48.6    291.6        1          375.0       0.0     757145.3
+  222   Tornealven                 Sweden               65.8     24.1        1          373.0       0.0     757518.3
+  223   Lempa                      El Salvador          13.8    271.2        3          367.7      12.6     757886.0
+  224   Bandama                    Ivory Coast           5.1    355.0        2          365.0      40.0     758251.0
+  225   Bueno                      Chile               -40.2    286.2        1          365.0       0.0     758616.0
+  226   Seal                       Canada               59.0    265.5        1          365.0       0.0     758981.0
+  227   Dalalven                   Sweden               60.7     17.3        3          364.7       8.3     759345.7
+  228   Penobscot                  USA                  44.5    291.2        4          364.0      49.9     759709.7
+  229   Waiau                      New Zealand         -45.7    166.7        2          363.0      28.0     760072.7
+  230   Tauy                       Russia               59.5    149.0        1          362.0       0.0     760434.7
+  231   Muonio                     Finland              65.8     24.3        5          361.2      10.3     760795.9
+  232   Tineg                      Philippines          17.6    120.3        1          358.7       0.0     761154.6
+  233   Catarman                   Philippines          12.6    124.6        1          357.1       0.0     761511.7
+  234   Sassandra                  Ivory Coast           5.0    353.8        3          354.0      50.5     761865.7
+  235   Tagus                      Portugal             38.6    350.8        5          350.8     129.8     762216.5
+  236   Kuban                      Russia               45.3     37.2        5          350.8      67.1     762567.3
+  237   Esquinas                   Costa Rica            8.5    276.8        1          350.0       0.0     762917.3
+  238   Polangui                   Philippines           7.4    124.2        1          350.0       0.0     763267.3
+  239   Noatak                     USA                  67.0    197.5        1          350.0       0.0     763617.3
+  240   Kanairiktok                Canada               55.1    299.9        1          350.0       0.0     763967.3
+  241   Naskaupi                   Canada               54.0    301.0        1          350.0       0.0     764317.3
+  242   Povungnituk                Canada               62.3    285.5        1          350.0       0.0     764667.3
+  243   Progo                      Indonesia            -8.0    110.2        1          345.0       0.0     765012.3
+  244   Savannah                   USA                  32.0    279.1        4          341.8      17.7     765354.1
+  245   Oranje                     South Africa        -28.5     17.5        5          340.8      21.0     765694.9
+  246   Romaine                    Canada               50.0    296.5        1          340.0       0.0     766034.9
+  247   Pee Dee                    USA                  33.3    280.8        4          339.0     123.4     766373.9
+  248   Nagdong                    South Korea          35.1    128.9        2          334.0      41.0     766707.9
+  249   Tolten                     Chile               -39.3    286.6        1          334.0       0.0     767041.9
+  250   Grande de Terraba          Costa Rica            9.0    276.3        3          327.0      14.9     767368.9
+  251   Kiso                       Japan                34.9    136.7        1          327.0       0.0     767695.9
+  252   Dniestr                    Ukraine              46.2     30.1        4          326.3      29.3     768022.3
+  253   Drammensvassdraget         Norway               59.3     10.5        1          326.0       0.0     768348.3
+  254   Drin                       Albania              41.8     19.5        4          324.5      23.0     768672.8
+  255   Wouri                      Cameroon              4.1      9.6        2          319.0      10.0     768991.8
+  256   Potomac                    USA                  38.1    283.4        4          318.0      19.7     769309.8
+  257   Weser                      Germany              53.5      8.5        5          317.8      29.0     769627.6
+  258   Ntem                       Cameroon              2.3      9.8        3          315.3      54.9     769942.9
+  259   Minho                      Portugal             41.9    351.2        1          313.0       0.0     770255.9
+  260   Pascagoula                 USA                  30.2    271.4        4          311.8      68.7     770567.7
+  261   Damodar                    India                22.0     88.0        2          307.0      10.0     770874.7
+  262   Amguema                    Russia               68.0    182.0        2          307.0      27.0     771181.7
+  263   Burdekin                   Australia           -19.7    147.6        3          305.3      38.7     771487.0
+  264   Peninsula Osa              Costa Rica            8.8    276.7        1          304.0       0.0     771791.0
+  265   Maas (Meuse)               Netherlands          51.8      4.0        5          302.0      35.1     772093.0
+  266   Saint John                 Liberia               5.9    349.9        2          301.0     168.0     772394.0
+  267   Mana                       French Guiana         5.8    306.1        1          300.0       0.0     772694.0
+  268   Guadalquivir               Spain                36.8    353.5        5          299.4     142.1     772993.4
+  269   Dordogne                   France               45.7     -1.0        2          297.5      19.5     773290.9
+  270   Kitakami                   Japan                38.4    141.4        1          297.0       0.0     773587.9
+  271   Save                       Mozambique          -21.0     35.0        2          296.5     137.5     773884.4
+  272   Santiago                   Mexico               21.7    254.5        3          296.0      52.8     774180.4
+  273   Yodo                       Japan                34.7    135.4        2          294.5      12.5     774474.9
+  274   Maule                      Chile               -35.2    287.3        3          293.3      79.6     774768.2
+  275   Nyong                      Cameroon              3.1      9.9        2          290.5     150.5     775058.7
+  276   Kalixalven (Kaitum)        Sweden               65.8     23.2        3          287.0       3.6     775345.7
+  277   Skiensvassdraget           Norway               59.1      9.7        1          287.0       0.0     775632.7
+  278   Kaoping                    Taiwan               22.5    120.6        1          285.0       0.0     775917.7
+  279   Subarnarekha               India                21.7     87.3        2          282.5      30.5     776200.2
+  280   Coco                       Honduras             15.0    276.9        2          276.0     224.0     776476.2
+  281   Petrohue                   Chile               -41.7    286.2        1          275.0       0.0     776751.2
+  282   Comoe                      Ivory Coast           5.2    356.2        1          274.0       0.0     777025.2
+  283   Daule                      Ecuador              -3.7    279.3        1          270.0       0.0     777295.2
+  284   Namsen                     Norway               64.4     11.2        1          270.0       0.0     777565.2
+  285   Konkoure                   Guinea                9.8    346.3        1          267.0       0.0     777832.2
+  286   Musa                       Papua New Guinea     -9.0    149.0        1          263.0       0.0     778095.2
+  287   Santiago                   Mexico               21.7    254.5        2          262.5      28.5     778357.7
+  288   Cagayan 1                  Philippines          18.4    121.7        2          260.5       2.5     778618.2
+  289   Pearl                      USA                  30.1    270.5        3          260.3      15.3     778878.5
+  290   Cavally                    Ivory Coast           4.3    352.6        2          258.4     151.3     779136.9
+  291   Waikato                    New Zealand         -37.4    174.7        3          258.0      91.7     779394.9
+  292   Mahaweli                   Sri Lanka             8.5     81.3        3          255.8      67.6     779650.7
+  293   Chirripo                   Costa Rica           10.8    276.4        1          252.0       0.0     779902.7
+  294   Oulujoki                   Finland              65.0     25.4        2          251.0       3.0     780153.7
+  295   Limpopo                    Mozambique          -25.0     33.5        3          250.0     120.3     780403.7
+  296   Cisnes                     Chile               -44.8    286.5        1          250.0       0.0     780653.7
+  297   Colorado                   Mexico               31.5    245.3        6          243.5     202.9     780897.2
+  298   Mananara                   Madagascar          -23.3     47.7        1          242.0       0.0     781139.2
+  299   Abulug                     Philippines          16.1    120.2        1          240.5       0.0     781379.7
+  300   Pra                        Ghana                 4.7    358.5        2          240.0      43.0     781619.7
+  301   Pemali                     Indonesia            -6.8    109.0        1          240.0       0.0     781859.7
+  302   Oueme                      Benin                 6.5      2.5        1          240.0       0.0     782099.7
+  303   Bolgoda                    Sri Lanka             6.8     79.9        1          238.0       0.0     782337.7
+  304   Adige                      Italy                45.2     12.3        3          237.0      17.7     782574.7
+  305   Coppermine                 Canada               67.5    245.0        2          236.5     120.5     782811.2
+  306   Tone                       Japan                35.7    140.7        3          236.0      37.3     783047.2
+  307   Waitaki                    New Zealand         -44.9    171.2        1          235.0       0.0     783282.2
+  308   Hai                        China                39.0    117.8        1          234.0       0.0     783516.2
+  309   Lurio                      Mozambique          -13.5     40.6        1          232.0       0.0     783748.2
+  310   Sabine                     USA                  29.8    266.2        3          231.7      17.9     783979.9
+  311   Approuague                 French Guiana         4.7    308.0        1          230.0       0.0     784209.9
+  312   Sinnamary                  French Guiana         5.6    306.8        1          230.0       0.0     784439.9
+  313   Motagua                    Guatemala            15.8    271.7        2          229.8      80.8     784669.7
+  314   Tiber                      Italy                41.7     12.3        5          229.2       8.0     784898.9
+  315   Roanoke                    USA                  36.0    283.9        3          228.3       3.9     785127.2
+  316   Kem                        Russia               65.0     34.7        2          228.0      29.0     785355.2
+  317   Perak                      Malaysia              4.0    100.7        2          228.0      19.0     785583.2
+  318   Ljusnan                    Sweden               61.3     17.2        3          226.7       5.4     785809.9
+  319   Pampanga                   Philippines          14.9    120.5        2          225.4       2.6     786035.3
+  320   Kymijoki                   Finland              60.4     26.5        3          224.3     100.8     786259.6
+  321   Kalu                       Sri Lanka             6.6     80.0        2          221.1      28.2     786480.7
+  322   Kokemaenjoki               Finland              61.5     21.6        2          220.5       5.5     786701.2
+  323   Ranavassdraget             Norway               66.2     14.0        1          220.0       0.0     786921.2
+  324   Merrimack                  USA                  41.3    287.6        2          218.5      13.5     787139.7
+  325   Adour                      France               43.5    358.4        2          217.5     142.5     787357.2
+  326   Sakarya                    Turkey               41.1     30.7        3          217.3      28.3     787574.5
+  327   Eel                        USA                  40.6    235.6        3          215.1      24.8     787789.6
+  328   Mambare                    Papua New Guinea     -8.0    148.0        1          215.0       0.0     788004.6
+  329   Umpqua                     USA                  43.7    235.9        2          215.0       3.0     788219.6
+  330   Daly                       Australia           -13.3    130.3        1          211.0       0.0     788430.6
+  331   Ceyhan                     Turkey               36.6     35.6        2          210.0      11.0     788640.6
+  332   Patuca                     Honduras             15.8    275.7        1          209.0       0.0     788849.6
+  333   Kalkkinen                  Finland              61.8     25.7        1          209.0       0.0     789058.6
+  334   Fitzroy-Dawson             Australia           -23.5    151.0        2          206.5      40.5     789265.1
+  335   Buzi                       Mozambique          -19.9     34.7        2          206.0     160.0     789471.1
+  336   Tym                        Russia               51.8    143.3        1          206.0       0.0     789677.1
+  337   Trinity                    USA                  29.6    265.2        3          205.7       2.9     789882.8
+  338   Changuinola                Panama                9.6    277.5        1          204.0       0.0     790086.8
+  339   Kunene                     Angola              -17.2     11.7        2          202.5      12.5     790289.3
+  340   Chico                      Philippines          18.4    121.7        2          201.8       6.3     790491.1
+  341   Suwanee                    USA                  29.2    276.9        3          201.3      11.9     790692.4
+  342   Juba                       Somalia              -0.2     42.6        1          200.0       0.0     790892.4
+  343   James                      USA                  37.0    283.7        3          199.7      12.0     791092.1
+  344   Reventazon                 Costa Rica           10.4    276.6        4          198.8      82.6     791290.9
+  345   Wanganui                   New Zealand         -40.0    175.0        1          198.0       0.0     791488.9
+  346   Anderson                   Canada               69.4    231.0        1          198.0       0.0     791686.9
+  347   Tecolutla                  Mexico               20.5    263.2        1          198.0       0.0     791884.9
+  348   Ulua                       Honduras             15.9    272.2        1          196.0       0.0     792080.9
+  349   Laoag                      Philippines          18.3    120.5        1          195.3       0.0     792276.3
+  350   Brazos                     USA                  29.0    263.4        4          194.3      26.5     792470.6
+  351   Sixaola                    Costa Rica            9.6    277.4        2          194.0      49.0     792664.6
+  352   Haast                      New Zealand         -44.0    169.0        1          190.0       0.0     792854.6
+  353   Liaohe                     China                41.0    122.3        1          190.0       0.0     793044.6
+  354   Santee                     USA                  33.1    280.8        4          189.6     213.9     793234.2
+  355   Itata                      Chile               -36.4    287.0        1          188.0       0.0     793422.2
+  356   Mira                       Ecuador               1.7    281.0        3          187.3      70.6     793609.5
+  357   Tana/Tenojoki              Norway               70.2     28.2        1          187.0       0.0     793796.5
+  358   Bayano                     Panama                9.1    280.8        2          186.5       4.5     793983.0
+  359   Patia                      Colombia              2.3    281.2        2          184.5     102.5     794167.5
+  360   Rogue                      USA                  42.4    235.6        2          184.5       2.5     794352.0
+  361   Shannon                    Ireland              52.6    350.3        3          183.7      10.5     794535.7
+  362   Escambia                   USA                  30.5    272.9        2          182.0       9.0     794717.7
+  363   Kizil                      Turkey               41.7     36.0        2          180.5      21.5     794898.2
+  364   Jokulsa                    Iceland              66.3    343.3        2          180.5       5.5     795078.7
+  365   Malselvvassdraget          Norway               69.5     18.7        1          180.0       0.0     795258.7
+  366   Androscoggin               USA                  43.8    290.0        3          173.3       6.2     795432.0
+  367   Iijoki                     Finland              65.4     25.3        2          171.5       0.5     795603.5
+  368   Kelani                     Sri Lanka             7.0     79.9        3          171.2       6.0     795774.7
+  369   Fuerte                     Mexico               25.8    250.5        1          171.0       0.0     795945.7
+  370   Pasvikelva/Paatsjoki       Norway               69.8     30.1        1          170.0       0.0     796115.7
+  371   Yoshino                    Japan                34.2    135.1        1          170.0       0.0     796285.7
+  372   Verde                      Mexico               16.0    262.2        1          169.0       0.0     796454.7
+  373   Neches                     USA                  29.8    266.2        3          168.0      15.7     796622.7
+  374   Tay                        United Kingdom       56.5    357.2        2          168.0      12.0     796790.7
+  375   Malaren-Norrstrom          Sweden               59.3     18.2        2          167.0       1.0     796957.7
+  376   Seraju                     Indonesia            -7.8    109.1        1          166.0       0.0     797123.7
+  377   Pitealven                  Sweden               65.3     21.6        3          165.3       7.3     797289.0
+  378   Vijose                     Albania              40.7     19.3        2          165.0      18.0     797454.0
+  379   Periyar                    India                10.2     76.2        1          162.0       0.0     797616.0
+  380   Vetsna                     Norway               65.8     12.6        1          161.0       0.0     797777.0
+  381   Karkkeh                    Iran                 30.0     48.5        2          161.0       5.0     797938.0
+  382   Skelleftealven             Sweden               64.6     21.1        3          158.0       2.2     798096.0
+  383   Pasig                      Philippines          14.5    121.0        1          157.5       0.0     798253.5
+  384   Scheldt                    Netherlands          51.4      4.3        1          155.0       0.0     798408.5
+  385   Chosui                     Taiwan               24.0    120.5        3          149.7      29.6     798558.2
+  386   Kum                        South Korea          36.0    126.6        1          149.0       0.0     798707.2
+  387   Gambia                     Gambia               13.3    283.6        3          149.0       5.0     798856.2
+  388   Severn                     United Kingdom       51.4    357.0        3          148.5     119.2     799004.7
+  389   Otra                       Norway               58.2      8.0        1          148.0       0.0     799152.7
+  390   Tauri                      Papua New Guinea     -8.2    146.2        2          147.5      11.5     799300.2
+  391   Tana                       Kenya                -2.3     40.3        3          147.3       9.0     799447.5
+  392   Matina                     Costa Rica           10.1    276.8        1          147.0       0.0     799594.5
+  393   Isonzo                     Italy                45.7     13.6        1          147.0       0.0     799741.5
+  394   Ord                        Australia           -15.0    128.3        2          146.5      21.5     799888.0
+  395   Farmington                 Liberia               7.1    349.6        1          146.1       0.0     800034.1
+  396   Rapel                      Chile               -33.9    288.1        3          146.0      24.9     800180.1
+  397   Trengganu                  Malaysia              4.3    103.3        2          145.5      55.5     800325.6
+  398   Nickerie                   Surinam               6.0    303.0        2          144.5      55.5     800470.1
+  399   Guadiana                   Portugal             37.2    352.6        4          144.0      39.9     800614.1
+  400   Grijalva                   Mexico               18.6    267.5        1          144.0       0.0     800758.1
+  401   Tano                       Ghana                 5.0    357.0        1          144.0       0.0     800902.1
+  402   Axios                      Greece               40.5     22.7        2          140.5       5.5     801042.6
+  403   Luan                       China                39.3    119.1        1          140.0       0.0     801182.6
+  404   Peninsula Nicoya           Costa Rica            9.9    274.3        1          140.0       0.0     801322.6
+  405   Vanapa                     Papua New Guinea     -9.3    146.8        1          139.0       0.0     801461.6
+  406   San Joaquin                USA                  37.8    237.4        3          138.3      14.4     801599.9
+  407   Ljungan                    Sweden               62.3     17.3        2          138.0       2.0     801737.9
+  408   Acheloos                   Greece               38.4     21.1        2          137.5      27.5     801875.4
+  409   Agno                       Philippines          16.1    120.2        3          137.4      16.7     802012.8
+  410   Colorado                   Argentina           -39.7    297.9        3          135.0       3.6     802147.8
+  411   Chiriqui                   Panama                8.3    277.5        2          133.5       9.5     802281.3
+  412   Tempisque                  Costa Rica           10.2    274.8        3          133.0     109.8     802414.3
+  413   Puyango-Tumbes             Ecuador              -3.5    279.2        2          132.5       7.5     802546.8
+  414   Pampana                    Sierra Leone          7.5    347.5        1          132.0       0.0     802678.8
+  415   Taedongang                 North Korea          38.7    125.2        2          129.0      49.0     802807.8
+  416   Kalinadi                   India                15.0     74.1        1          128.0       0.0     802935.8
+  417   Clarence                   Australia           -29.3    153.4        2          127.0       9.0     803062.8
+  418   Hualien                    Taiwan               24.0    121.7        1          127.0       0.0     803189.8
+  419   Peinan                     Taiwan               22.7    121.2        1          127.0       0.0     803316.8
+  420   Hsiukuluan                 Taiwan               23.4    121.5        1          127.0       0.0     803443.8
+  421   Cetina                     Croatia              43.5     16.4        1          127.0       0.0     803570.8
+  422   Nera                       Russia               59.3    144.5        1          127.0       0.0     803697.8
+  423   Tagum                      Philippines           7.4    125.7        1          126.7       0.0     803824.5
+  424   Kennebec                   USA                  43.8    290.0        2          126.5       5.5     803951.0
+  425   Aklan                      Philippines          11.8    122.3        1          126.0       0.0     804077.0
+  426   Sebou                      Morocco              34.2    353.1        4          125.8      48.5     804202.8
+  427   Lagarfljot                 Iceland              65.0    341.0        2          125.5      15.5     804328.3
+  428   Ta Pi                      Thailand              9.3     99.3        1          124.0       0.0     804452.3
+  429   Santa                      Peru                 -9.1    281.3        3          123.7      17.9     804576.0
+  430   Agus                       Philippines          14.8    121.7        2          123.3       1.3     804699.3
+  431   Tugela                     South Africa        -29.3     31.5        2          122.5      26.5     804821.8
+  432   Sehnkwehn                  Liberia               5.5    350.5        2          121.7       1.7     804943.5
+  433   Chehalis                   USA                  46.9    235.8        2          120.0       1.0     805063.5
+  434   Shebelle                   Somalia              -0.4     42.6        1          120.0       0.0     805183.5
+  435   Arendalsvassdraget         Norway               58.4      8.8        1          119.0       0.0     805302.5
+  436   Numedalslagan              Norway               59.0     10.1        1          119.0       0.0     805421.5
+  437   Mananjary                  Madagascar          -21.1     48.2        1          118.0       0.0     805539.5
+  438   Cagayan 2                  Philippines           8.6    124.7        1          117.8       0.0     805657.3
+  439   Pungoe                     Mozambique          -19.8     34.8        2          117.5      19.5     805774.8
+  440   Nidelvvassdraget           Norway               58.3      8.6        1          117.0       0.0     805891.8
+  441   Naranjal                   Ecuador              -2.7    279.5        1          117.0       0.0     806008.8
+  442   Chikugo                    Japan                33.1    130.2        2          116.5       0.5     806125.3
+  443   Chira                      Peru                 -4.5    278.8        3          116.3      32.3     806241.6
+  444   Sira                       Norway               58.3      6.6        1          116.0       0.0     806357.6
+  445   Sambirano                  Madagascar          -13.4     48.2        1          116.0       0.0     806473.6
+  446   Trent                      United Kingdom       53.6      0.1        4          113.3      49.0     806586.9
+  447   Victoria                   Australia           -14.9    129.5        2          112.5      20.5     806699.4
+  448   Oum er Rbia                Morocco              33.6    351.4        3          112.0      12.8     806811.4
+  449   Demerara                   Guyana                6.8    301.8        1          112.0       0.0     806923.4
+  450   Mkomazi (Durban Region)    South Africa        -30.0     30.4        1          110.1       0.0     807033.6
+  451   Strymon                    Greece               40.8     23.8        1          110.0       0.0     807143.6
+  452   Southern Bug               Ukraine              46.5     31.9        1          110.0       0.0     807253.6
+  453   Maipo                      Chile               -33.5    288.2        4          109.6       7.5     807363.2
+  454   Muda                       Malaysia              5.5    100.5        1          109.0       0.0     807472.2
+  455   Papagayo                   Mexico               16.7    260.4        1          107.8       0.0     807580.0
+  456   Lobe                       Cameroon              2.8      9.9        1          107.0       0.0     807687.0
+  457   Ivondro                    Madagascar          -17.7     48.8        1          106.6       0.0     807793.6
+  458   Smith                      USA                  41.9    235.8        1          106.1       0.0     807899.8
+  459   Seli                       Sierra Leone          8.6    347.0        1          106.0       0.0     808005.8
+  460   Mondego                    Portugal             40.1    351.1        2          104.0      22.0     808109.8
+  461   Vossovassdraget            Norway               60.2      6.0        1          104.0       0.0     808213.8
+  462   Arno                       Italy                43.7     10.3        2          103.0      37.0     808316.8
+  463   Suldalsvassdraget          Norway               59.5      5.8        1          103.0       0.0     808419.8
+  464   Rio Grande                 USA                  26.0    262.9        6          102.8      18.1     808522.6
+  465   San Pedro                  Mexico               21.8    254.4        2          102.5       7.5     808625.1
+  466   Cebollati                  Uruguay             -32.0    308.0        1          102.0       0.0     808727.1
+  467   Incomati                   Mozambique          -25.8     32.7        3          100.7      20.3     808827.8
+  468   Gaula                      Norway               63.6     10.0        1           98.0       0.0     808925.8
+  469   Cape Fear                  USA                  34.0    282.0        2           97.6       1.7     809023.4
+  470   Yuna                       Dominican Rep.       19.2    290.3        1           96.0       0.0     809119.4
+  471   Rossaga                    Norway               66.1     13.8        1           96.0       0.0     809215.4
+  472   Nestos                     Greece               40.8     24.7        1           96.0       0.0     809311.4
+  473   Buyuk Menderes             Turkey               37.5     27.3        2           94.5       4.5     809405.9
+  474   Camana                     Peru                -16.7    287.2        1           94.0       0.0     809499.9
+  475   Yaqui                      Mexico               27.6    249.5        2           93.5      14.5     809593.4
+  476   Maputo                     Mozambique          -26.2     32.7        2           93.2       4.2     809686.6
+  477   Saint Johns                USA                  30.4    278.4        2           93.0       1.0     809779.6
+  478   Luga                       Russia               59.7     28.3        1           92.0       0.0     809871.6
+  479   Corrib                     Ireland              53.2    350.9        1           91.0       0.0     809962.6
+  480   Escalante                  Venezuela            11.0    289.0        1           91.0       0.0     810053.6
+  481   Pennar (Penneru)           India                14.7     80.5        3           90.7      12.2     810144.3
+  482   Jubones                    Ecuador              -3.3    280.0        2           90.0      38.0     810234.3
+  483   Atoyac                     Mexico               16.0    262.2        1           90.0       0.0     810324.3
+  484   Motalastrom                Sweden               58.7     17.0        3           90.0       0.8     810414.3
+  485   Artibonite                 Haiti                19.2    287.2        1           89.5       0.0     810503.8
+  486   Anchicaya                  Colombia              3.8    282.8        1           88.8       0.0     810592.6
+  487   Mandrare                   Madagascar          -25.1     46.4        1           88.0       0.0     810680.6
+  488   Sewa                       Sierra Leone          7.2    349.2        1           87.0       0.0     810767.6
+  489   Kvina                      Norway               58.2      6.7        1           87.0       0.0     810854.6
+  490   Ve                         Vietnam              15.0    109.0        1           86.6       0.0     810941.2
+  491   Mono                       Benin                 6.2      1.8        3           86.0      20.8     811027.2
+  492   Grande de Tarcoles         Costa Rica            9.7    275.3        4           86.0       7.1     811113.2
+  493   Erne                       Ireland              54.5    351.7        1           85.5       0.0     811198.7
+  494   Mandalselva                Norway               58.0      7.6        1           85.0       0.0     811283.7
+  495   Santa Maria                Panama                8.1    279.5        2           84.2       3.2     811367.9
+  496   Tabasara                   Panama                8.0    278.3        2           84.0      11.0     811451.9
+  497   Altavassdraget             Norway               70.2     23.0        1           84.0       0.0     811535.9
+  498   Stjordalsvassdraget        Norway               63.6     11.0        1           82.0       0.0     811617.9
+  499   Neuse                      USA                  35.1    283.3        1           82.0       0.0     811699.9
+  500   Suchiate                   Mexico               14.5    267.7        1           80.7       0.0     811780.6
+  501   Ems                        Germany              53.7      7.0        3           80.2       5.2     811860.8
+  502   Maritza                    Bulgaria             40.7     26.0        2           79.5      34.5     811940.3
+  503   Wye                        United Kingdom       51.6    357.3        1           78.0       0.0     812018.3
+  504   Lagan                      Sweden               56.5     12.9        2           77.0       5.0     812095.3
+  505   Thames                     United Kingdom       51.5      0.7        4           75.9       5.4     812171.1
+  506   Santa Catalina             Mexico               16.5    261.3        1           75.3       0.0     812246.4
+  507   Snasavassdraget            Norway               64.0     13.0        1           75.0       0.0     812321.4
+  508   Ota                        Japan                34.4    132.4        1           74.0       0.0     812395.4
+  509   Colorado                   USA                  28.7    264.0        3           73.7       5.7     812469.1
+  510   Jucar                      Spain                39.1    359.8        4           72.9      30.6     812542.0
+  511   Tamega                     Portugal             38.7    350.7        1           72.5       0.0     812614.5
+  512   Ruvu                       Tanzania             -6.3     39.0        1           72.0       0.0     812686.5
+  513   Orkla                      Norway               63.5     10.0        1           70.0       0.0     812756.5
+  514   Mandulog                   Philippines           8.6    124.7        1           69.5       0.0     812826.0
+  515   Driva                      Norway               63.0      8.2        1           69.0       0.0     812895.0
+  516   South Esk                  Australia           -41.2    146.8        1           69.0       0.0     812964.0
+  517   Bucayao                    Philippines          13.5    121.4        1           68.8       0.0     813032.8
+  518   Aliakmon                   Greece               40.5     22.7        2           68.0      19.0     813100.8
+  519   Spey                       United Kingdom       57.7    356.9        2           67.6       3.6     813168.4
+  520   Tweed                      United Kingdom       55.8    358.0        3           66.4      23.7     813234.8
+  521   Berg (Capetown Region)     South Africa        -32.8     18.2        1           66.3       0.0     813301.1
+  522   Hawkesbury                 Australia           -33.5    151.3        1           66.0       0.0     813367.1
+  523   Snowy                      Australia           -37.8    148.7        1           66.0       0.0     813433.1
+  524   Angat                      Philippines          14.8    120.6        1           66.0       0.0     813499.1
+  525   Bebedero                   Costa Rica           10.2    274.8        1           66.0       0.0     813565.1
+  526   Verdalsvassdraget          Norway               63.8     11.3        1           65.0       0.0     813630.1
+  527   Breede                     South Africa        -34.3     20.8        1           64.2       0.0     813694.3
+  528   Guasare                    Venezuela            11.0    289.0        1           64.0       0.0     813758.3
+  529   Tovdalsvassdraget          Norway               58.3      8.1        1           64.0       0.0     813822.3
+  530   Sabarmati                  India                22.2     72.2        3           64.0      40.0     813886.3
+  531   Tsengwen                   Taiwan               23.1    120.1        1           63.0       0.0     813949.3
+  532   Haiho                      China                39.0    117.7        1           63.0       0.0     814012.3
+  533   Russian                    USA                  38.5    236.9        1           62.9       0.0     814075.2
+  534   Ilog                       Philippines           9.9    122.7        2           62.8      11.7     814138.0
+  535   Selangor                   Malaysia              3.3    101.2        2           62.8       6.5     814200.8
+  536   Bernam                     Malaysia              3.7    100.8        1           62.0       0.0     814262.8
+  537   Wami                       Tanzania             -6.1     39.0        1           62.0       0.0     814324.8
+  538   Pardo                      Brazil              -15.6    321.1        1           62.0       0.0     814386.8
+  539   Ogeechee                   USA                  31.9    278.9        1           62.0       0.0     814448.8
+  540   Tumen                      Russia               42.2    130.7        1           62.0       0.0     814510.8
+  541   Orontes (Asi)              Turkey               36.1     36.0        1           62.0       0.0     814572.8
+  542   Gin Ganga                  Sri Lanka             6.1     80.2        1           61.6       0.0     814634.4
+  543   Meluli                     Mozambique          -16.4     39.7        1           61.0       0.0     814695.4
+  544   Fonseca                    Panama                8.2    278.1        1           60.8       0.0     814756.3
+  545   Jostedola                  Norway               61.2      5.0        1           60.0       0.0     814816.3
+  546   Pacuare                    Costa Rica           10.3    276.7        3           60.0       4.5     814876.3
+  547   Guadalupe                  USA                  28.3    263.5        1           59.0       0.0     814935.3
+  548   Surna                      Norway               63.2      8.2        1           59.0       0.0     814994.3
+  549   Cestos                     Liberia               5.5    350.3        2           58.8       5.8     815053.1
+  550   Chiriqui Viejo             Panama                8.3    277.3        2           58.2       5.2     815111.3
+  551   Charente                   France               46.0     -1.0        1           58.0       0.0     815169.3
+  552   Blackwater                 Ireland              51.9    352.2        1           57.5       0.0     815226.8
+  553   Bjerkreimsvassdraget       Norway               58.4      6.0        1           57.0       0.0     815283.8
+  554   Yaque del Norte            Dominican Rep.       19.8    288.3        2           56.8       7.8     815340.6
+  555   Walawe                     Sri Lanka             6.1     81.1        2           56.8      11.8     815397.4
+  556   Bobos                      Mexico               20.7    262.7        1           56.5       0.0     815453.9
+  557   Seom Jin                   South Korea          34.9    127.7        1           56.0       0.0     815509.9
+  558   Majes                      Peru                -16.7    287.3        1           55.8       0.0     815565.7
+  559   Gaularvassdraget           Norway               61.2      5.0        1           55.0       0.0     815620.7
+  560   Canete                     Peru                -13.2    283.6        1           55.0       0.0     815675.7
+  561   Zulia                      Colombia             11.0    288.5        1           55.0       0.0     815730.7
+  562   La Antigua                 Mexico               19.4    263.6        1           54.7       0.0     815785.4
+  563   Naranjo                    Guatemala            14.6    267.8        1           54.7       0.0     815840.1
+  564   Salado                     Argentina           -36.0    303.0        1           54.5       0.0     815894.6
+  565   Jolstra                    Norway               61.2      5.0        1           54.0       0.0     815948.6
+  566   Abangares                  Costa Rica           10.1    275.1        1           54.0       0.0     816002.6
+  567   Panay                      Philippines          11.6    122.8        1           53.8       0.0     816056.4
+  568   Sibalom                    Philippines          10.8    121.9        1           53.8       0.0     816110.2
+  569   Foulakari                  Congo                -6.0     12.3        2           53.5       3.5     816163.7
+  570   Sipocot                    Philippines          13.7    123.1        1           53.4       0.0     816217.1
+  571   Tusubres                   Costa Rica            9.6    275.4        1           53.0       0.0     816270.1
+  572   San Pablo                  Panama                7.6    278.1        2           52.9       0.1     816322.9
+  573   Aconcagua                  Chile               -33.0    289.2        3           51.7      19.8     816374.6
+  574   San Lorenzo                Mexico               24.3    252.7        1           51.7       0.0     816426.3
+  575   Jalaud (Jalaur)            Philippines          10.8    122.7        3           51.0      10.5     816477.3
+  576   Moy                        Ireland              54.3    350.8        1           51.0       0.0     816528.3
+  577   Deduru Oya                 Sri Lanka             7.6     79.7        1           51.0       0.0     816579.3
+  578   Maha Oya                   Sri Lanka             7.3     79.9        1           51.0       0.0     816630.3
+  579   Chone                      Ecuador              -0.5    279.3        1           51.0       0.0     816681.3
+  580   Burnett                    Australia           -24.8    152.5        1           51.0       0.0     816732.3
+  581   Lofa                       Liberia               6.7    349.7        2           50.4       0.2     816782.7
+  582   Saltdalsvassdraget         Norway               67.3     14.5        1           50.0       0.0     816832.7
+  583   Eidfjordvassdraget         Norway               60.0      5.9        1           50.0       0.0     816882.7
+  584   Ozama                      Dominican Rep.       18.4    290.2        1           50.0       0.0     816932.7
+  585   Attanagalu Oya             Sri Lanka             7.2     79.9        1           49.8       0.0     816982.5
+  586   Bentota Ganga              Sri Lanka             6.5     80.0        1           48.8       0.0     817031.3
+  587   Bicol                      Philippines          14.0    123.2        2           48.8       2.0     817080.1
+  588   Helgean                    Sweden               55.9     14.3        2           48.5       4.5     817128.6
+  589   Atran                      Sweden               56.9     12.4        2           48.5       1.5     817177.1
+  590   Chubut                     Argentina           -43.2    295.0        2           48.5       0.5     817225.6
+  591   Beiarelva                  Norway               67.2     14.3        1           48.0       0.0     817273.6
+  592   Cocle del Norte            Panama                9.1    279.3        1           48.0       0.0     817321.6
+  593   Tyne                       United Kingdom       56.0    357.4        1           47.0       0.0     817368.6
+  594   Simojoki                   Finland              65.6     25.1        2           46.5       2.5     817415.1
+  595   Mad                        USA                  40.9    235.9        1           46.4       0.0     817461.5
+  596   Piarnu                     Estonia              58.4     24.5        1           46.2       0.0     817507.7
+  597   Caracan                    Philippines           9.3    126.0        1           46.1       0.0     817553.8
+  598   Pativilca                  Peru                -10.7    282.2        1           46.0       0.0     817599.8
+  599   Savegre                    Costa Rica            9.4    275.9        1           46.0       0.0     817645.8
+  600   Piaxtla                    Mexico               23.6    253.2        1           45.5       0.0     817691.3
+  601   Catubig                    Philippines          12.7    125.0        1           45.2       0.0     817736.5
+  602   Cazones                    Mexico               20.7    262.8        1           45.0       0.0     817781.5
+  603   Aisen                      Chile               -45.3    287.0        1           45.0       0.0     817826.5
+  604   Ardalselva                 Norway               59.2      6.0        1           45.0       0.0     817871.5
+  605   Bonga                      Philippines          17.9    120.4        1           44.9       0.0     817916.4
+  606   Kola                       Russia               69.3     32.8        2           44.8       2.8     817961.2
+  607   Bago                       Philippines          10.6    122.7        1           44.2       0.0     818005.4
+  608   Muar                       Malaysia              2.0    102.7        1           44.0       0.0     818049.4
+  609   Chamelecon                 Honduras             15.9    271.2        1           44.0       0.0     818093.4
+  610   Kyronjoki                  Finland              63.2     21.8        1           44.0       0.0     818137.4
+  611   Kiiminkijoki               Finland              65.2     25.3        1           44.0       0.0     818181.4
+  612   Ardalsvassdraget           Norway               61.2      5.0        1           44.0       0.0     818225.4
+  613   Lokoundje                  Cameroon              3.0     10.0        1           43.1       0.0     818268.5
+  614   Parrita                    Costa Rica            9.5    275.6        2           43.0      13.0     818311.5
+  615   La Estrella                Costa Rica            9.8    277.1        2           43.0       1.0     818354.5
+  616   Reisavassdraget            Norway               69.8     21.0        1           43.0       0.0     818397.5
+  617   Breimsvassdraget           Norway               61.2      5.0        1           43.0       0.0     818440.5
+  618   Yeong San                  South Korea          34.8    126.3        1           43.0       0.0     818483.5
+  619   Tuxpan                     Mexico               21.0    262.6        1           42.0       0.0     818525.5
+  620   Lika                       Croatia              44.5     15.2        1           42.0       0.0     818567.5
+  621   Loukkos                    Morocco              35.2    353.8        1           42.0       0.0     818609.5
+  622   Candelaria                 Mexico               18.8    268.5        1           41.6       0.0     818651.1
+  623   Jarrahi                    Iran                 30.0     48.5        1           41.6       0.0     818692.8
+  624   Tuy                        Venezuela            10.5    294.0        2           41.5      20.5     818734.3
+  625   Vouga                      Portugal             40.7    351.2        1           41.2       0.0     818775.4
+  626   Portoviejo                 Ecuador              -0.7    279.5        1           41.0       0.0     818816.4
+  627   Rauma                      Norway               62.7      7.0        1           41.0       0.0     818857.4
+  628   Nissan                     Sweden               56.7     12.8        2           40.5       0.5     818897.9
+  629   Langat                     Malaysia              2.7    101.3        2           40.4       8.8     818938.3
+  630   Sulitjelmavassdraget       Norway               67.2     14.4        1           40.0       0.0     818978.3
+  631   Berbice                    Guyana                6.5    302.5        1           40.0       0.0     819018.3
+  632   Krian                      Malaysia              5.2    100.3        1           40.0       0.0     819058.3
+  633   Var                        France               43.7      7.2        1           40.0       0.0     819098.3
+  634   Gal Oya                    Sri Lanka             7.3     81.8        1           39.6       0.0     819137.9
+  635   Ranealven                  Sweden               65.8     22.4        2           39.5       2.5     819177.4
+  636   Trang                      Thailand              7.3     99.5        1           39.3       0.0     819216.8
+  637   Clyde                      United Kingdom       55.9    355.1        1           39.0       0.0     819255.8
+  638   Santa Lucia                Uruguay             -33.2    303.5        1           39.0       0.0     819294.8
+  639   Thu-Bon                    Vietnam              15.8    108.4        1           39.0       0.0     819333.8
+  640   Kuparuk                    United States        70.4    211.2        1           38.9       0.0     819372.6
+  641   Great Kei                  South Africa        -32.7     28.4        1           38.7       0.0     819411.3
+  642   Broadback                  Canada                5.1    280.0        1           38.3       0.0     819449.6
+  643   Moulouya                   Morocco              35.2    357.7        3           38.2      12.7     819487.8
+  644   Coahuayana                 Mexico               18.7    256.2        1           38.1       0.0     819525.9
+  645   Licungo                    Mozambique          -17.5     37.5        1           38.0       0.0     819563.9
+  646   Bengo                      Angola               -8.6     13.2        1           38.0       0.0     819601.9
+  647   Mattole                    USA                  40.3    235.6        1           37.9       0.0     819639.8
+  648   Johore                     Malaysia              1.4    104.0        1           37.8       0.0     819677.6
+  649   Yaque del Sur              Dominican Rep.       18.3    288.8        2           37.7      14.3     819715.3
+  650   Zohreh                     Iran                 30.1     49.5        1           37.3       0.0     819752.6
+  651   Sinaloa                    Mexico               25.2    251.4        1           37.2       0.0     819789.8
+  652   Hunter                     Australia           -32.9    151.8        2           37.0       9.0     819826.8
+  653   Ocosito                    Guatemala            14.4    268.0        1           36.9       0.0     819863.7
+  654   Nahualate                  Guatemala            14.0    268.4        2           36.6      34.6     819900.3
+  655   Aricuaisa                  Venezuela            11.0    287.5        1           36.4       0.0     819936.7
+  656   Ameca                      Mexico               20.6    254.5        1           36.0       0.0     819972.7
+  657   Lune                       United Kingdom       54.1    357.1        1           36.0       0.0     820008.7
+  658   Tra Khuc                   Vietnam              15.2    109.0        1           36.0       0.0     820044.7
+  659   Busuanga                   Philippines          12.3    119.9        1           35.6       0.0     820080.3
+  660   Ican                       Guatemala            14.1    268.4        1           35.6       0.0     820115.9
+  661   Gidealven                  Sweden               63.3     19.2        2           35.5       0.5     820151.4
+  662   Nilwala Ganga              Sri Lanka             6.0     80.5        1           35.0       0.0     820186.4
+  663   Ore                        Sweden               63.5     19.7        1           35.0       0.0     820221.4
+  664   Kala                       Finland              64.3     23.9        1           35.0       0.0     820256.4
+  665   San Jose                   Uruguay             -33.2    303.5        1           35.0       0.0     820291.4
+  666   Acaponeta                  Mexico               22.7    254.2        1           34.7       0.0     820326.1
+  667   Motatan                    Venezuela            11.0    288.5        1           34.0       0.0     820360.1
+  668   Choluteca                  Honduras             13.2    272.2        1           34.0       0.0     820394.1
+  669   Goascaran                  El Salvador          13.2    272.3        1           34.0       0.0     820428.1
+  670   Siika                      Finland              64.8     24.7        1           34.0       0.0     820462.1
+  671   Osumi                      Albania              40.9     19.4        1           33.9       0.0     820496.0
+  672   Tambo                      Peru                -17.3    288.1        1           33.0       0.0     820529.0
+  673   Messalo                    Mozambique          -11.5     40.5        1           33.0       0.0     820562.0
+  674   Viskan                     Sweden               57.2     12.2        1           33.0       0.0     820595.0
+  675   Neveri                     Venezuela            10.2    295.3        1           33.0       0.0     820628.0
+  676   Mico                       Nicaragua            12.0    276.0        1           32.9       0.0     820660.9
+  677   Tamiraparni                India                 8.6     78.1        1           32.1       0.0     820693.0
+  678   Dee                        United Kingdom       54.8    355.8        2           32.0       2.0     820725.0
+  679   Monapo                     Mozambique          -15.2     40.8        1           32.0       0.0     820757.0
+  680   Daling                     China                41.0    121.5        1           32.0       0.0     820789.0
+  681   Ramu                       Papua New Guinea     -4.0    144.7        1           32.0       0.0     820821.0
+  682   Pyha                       Finland              64.5     24.2        1           32.0       0.0     820853.0
+  683   Orb                        France               43.2      3.2        1           32.0       0.0     820885.0
+  684   Cleddau                    New Zealand         -44.6    167.8        1           31.9       0.0     820916.9
+  685   Sagavanirktok              United States        70.3    212.0        1           31.6       0.0     820948.5
+  686   Riviere Grande-Anse        Haiti                18.7    286.0        1           31.5       0.0     820980.0
+  687   Boyne                      Ireland              53.7    353.7        1           31.1       0.0     821011.1
+  688   Lapuan                     Finland              63.6     22.6        1           31.0       0.0     821042.1
+  689   Marikina                   Philippines          14.5    121.0        1           30.9       0.0     821073.0
+  690   Assi                       Syria                36.0     36.0        1           30.4       0.0     821103.4
+  691   Magasauang Tubig           Philippines          13.3    121.4        1           30.2       0.0     821133.6
+  692   Chagres                    Panama                9.3    279.9        1           30.2       0.0     821163.8
+  693   Chicama                    Peru                 -8.0    280.6        1           30.0       0.0     821193.8
+  694   Chongchongang              North Korea          39.6    125.5        1           30.0       0.0     821223.8
+  695   Eman                       Sweden               57.2     16.5        1           30.0       0.0     821253.8
+  696   Usk                        United Kingdom       51.6    357.9        1           30.0       0.0     821283.8
+  697   Redwood Creek              USA                  41.3    235.9        1           29.8       0.0     821313.6
+  698   Padang Terap               Malaysia              6.4    100.2        1           29.0       0.0     821342.6
+  699   Jequetepeque               Peru                 -7.4    280.5        1           29.0       0.0     821371.6
+  700   Rimac                      Peru                -12.1    282.9        1           29.0       0.0     821400.6
+  701   Damas                      Costa Rica            9.5    275.5        1           29.0       0.0     821429.6
+  702   Tensift                    Morocco              32.0    350.5        1           29.0       0.0     821458.6
+  703   Vaigai                     India                 9.2     79.0        1           28.9       0.0     821487.4
+  704   Huaura                     Peru                -11.2    282.5        1           28.0       0.0     821515.4
+  705   Byskealven                 Sweden               64.9     21.2        2           27.5      13.5     821542.9
+  706   Morrumsan                  Sweden               56.2     14.8        2           27.5       0.5     821570.4
+  707   Banano                     Costa Rica            9.9    277.0        2           27.3      10.8     821597.8
+  708   Mundeni Aru                Sri Lanka             7.8     81.4        1           27.2       0.0     821624.9
+  709   Pisco                      Peru                -13.2    283.4        1           27.0       0.0     821651.9
+  710   Coyolate                   Guatemala            13.9    268.6        1           27.0       0.0     821678.9
+  711   Molocue                    Mozambique          -17.0     39.0        1           27.0       0.0     821705.9
+  712   Aude                       France               43.0      3.0        1           27.0       0.0     821732.9
+  713   Somme                      France               50.2      1.5        1           27.0       0.0     821759.9
+  714   Mamburao                   Philippines          13.3    120.6        1           26.8       0.0     821786.8
+  715   Bundoya                    Sierra Leone          7.8    347.6        1           26.7       0.0     821813.4
+  716   Devolli                    Albania              40.9     19.4        1           26.4       0.0     821839.8
+  717   Armeria                    Mexico               19.0    256.0        1           26.3       0.0     821866.1
+  718   Tenane                     Philippines          11.2    125.0        1           26.1       0.0     821892.3
+  719   Piura                      Peru                 -5.5    279.3        1           26.0       0.0     821918.3
+  720   Ligonha                    Mozambique          -16.8     39.2        1           26.0       0.0     821944.3
+  721   Gatun                      Panama                9.4    280.0        1           26.0       0.0     821970.3
+  722   Naguilian                  Philippines          16.2    119.8        1           25.6       0.0     821995.9
+  723   Maduru Oya                 Sri Lanka             7.9     81.5        1           25.5       0.0     822021.4
+  724   Ankobra                    Ghana                 4.8    357.7        1           25.3       0.0     822046.7
+  725   Mati                       Albania              41.6     19.5        1           25.1       0.0     822071.8
+  726   Jesus Maria                Costa Rica            9.9    275.3        1           25.0       0.0     822096.8
+  727   Van Duzen                  USA                  40.6    235.8        1           24.7       0.0     822121.5
+  728   Kumbukkan Oya              Sri Lanka             6.5     81.7        1           24.5       0.0     822146.0
+  729   Grande de San Miquel       El Salvador          13.2    271.5        1           24.2       0.0     822170.2
+  730   Rio Grande                 Jamaica              18.2    283.5        1           24.1       0.0     822194.3
+  731   Cahabon                    Guatemala            15.8    271.2        1           24.0       0.0     822218.3
+  732   Moalven                    Sweden               63.3     18.9        1           24.0       0.0     822242.3
+  733   Naranjo                    Costa Rica            9.4    275.7        1           24.0       0.0     822266.3
+  734   Nueces                     USA                  27.8    262.7        3           23.7       1.2     822290.0
+  735   Paz                        El Salvador          13.8    269.9        2           23.6       3.4     822313.6
+  736   Nykopingsan                Sweden               58.7     17.1        1           23.0       0.0     822336.6
+  737   Zrmanja                    Croatia              44.5     15.0        1           23.0       0.0     822359.6
+  738   La Villa                   Panama                8.0    279.7        2           22.8       5.8     822382.4
+  739   Kamtehiya                  Bulgaria             43.0     27.9        1           22.4       0.0     822404.8
+  740   Klang                      Malaysia              3.0    101.3        2           22.2       5.0     822427.0
+  741   Moin                       Costa Rica           10.0    276.9        1           22.0       0.0     822449.0
+  742   Perhon                     Finland              63.9     23.1        1           22.0       0.0     822471.0
+  743   Tuma                       Nicaragua            12.9    276.5        2           21.8       0.8     822492.8
+  744   Cheliff                    Algeria              36.0      0.1        2           21.7       4.2     822514.5
+  745   Outeniqua Region           South Africa        -23.4     34.0        1           21.5       0.0     822536.0
+  746   Indio                      Panama                9.2    279.7        1           21.0       0.0     822557.0
+  747   Glenelg                    Australia           -38.0    141.0        1           21.0       0.0     822578.0
+  748   Mersey                     United Kingdom       53.4    356.8        1           21.0       0.0     822599.0
+  749   Gavlean                    Sweden               60.5     17.3        1           21.0       0.0     822620.0
+  750   Humaya                     Mexico               24.5    252.4        1           20.9       0.0     822640.9
+  751   Tehuantepec                Mexico               16.1    264.7        1           20.7       0.0     822661.6
+  752   Ponnaiyar                  India                11.8     79.8        1           20.6       0.0     822682.2
+  753   Gouritz                    South Africa        -34.3     21.9        1           20.6       0.0     822702.8
+  754   Taw                        United Kingdom       51.1    355.8        1           20.5       0.0     822723.3
+  755   Salung-Daca                Philippines           9.8    123.5        1           20.3       0.0     822743.6
+  756   Laloki                     Papua New Guinea     -9.5    147.0        1           20.0       0.0     822763.6
+  757   Baru                       Costa Rica            9.3    276.1        1           20.0       0.0     822783.6
+  758   Bou Regreg                 Morocco              34.0    353.0        1           20.0       0.0     822803.6
+  759   Iponan                     Philippines           9.0    125.4        1           19.7       0.0     822823.3
+  760   Delangersan                Sweden               61.7     17.2        1           19.0       0.0     822842.3
+  761   Karjaan                    Finland              60.0     23.5        1           19.0       0.0     822861.3
+  762   Grande                     Panama                8.4    279.6        2           18.9       0.1     822880.2
+  763   Wharfe                     United Kingdom       53.6      0.1        1           18.8       0.0     822899.0
+  764   Medjerda                   Tunisia              37.2     10.2        1           18.6       0.0     822917.6
+  765   Kala Oya                   Sri Lanka             8.3     79.7        1           18.6       0.0     822936.3
+  766   Toa                        Cuba                 20.4    285.5        2           18.5      13.2     822954.8
+  767   Barranca                   Costa Rica            9.9    275.2        3           18.1       7.0     822972.9
+  768   Avon                       England              51.5    357.3        1           18.1       0.0     822991.0
+  769   Sebaou                     Algeria              37.0      3.7        1           18.1       0.0     823009.1
+  770   Grande                     Peru                -15.2    284.5        1           18.0       0.0     823027.1
+  771   Mala                       Peru                -12.7    283.3        1           18.0       0.0     823045.1
+  772   Gamtoos                    South Africa        -34.0     25.0        1           18.0       0.0     823063.1
+  773   Umbeluzi                   Mozambique          -26.0     32.5        2           17.9       7.9     823081.0
+  774   Itapicuru                  Brazil              -11.5    322.4        1           17.0       0.0     823098.0
+  775   Humuya                     Honduras             15.9    272.2        1           17.0       0.0     823115.0
+  776   East London Region         South Africa        -33.0     27.9        1           17.0       0.0     823132.0
+  777   Sembrong                   Malaysia              2.8    103.6        1           16.8       0.0     823148.8
+  778   Maria Linda                Guatemala            13.9    269.3        1           16.3       0.0     823165.1
+  779   Villanueva                 Nicaragua            13.0    273.0        1           16.2       0.0     823181.3
+  780   San Juan                   Peru                -13.4    283.3        1           16.0       0.0     823197.3
+  781   Flinders                   Australia           -17.6    140.6        1           16.0       0.0     823213.3
+  782   Exe                        United Kingdom       50.6    356.6        1           16.0       0.0     823229.3
+  783   Ahtavan                    Finland              63.7     22.7        1           16.0       0.0     823245.3
+  784   Mirna                      Croatia              45.3     13.6        1           16.0       0.0     823261.3
+  785   Nizao                      Dominican Rep.       18.2    289.8        1           15.8       0.0     823277.1
+  786   Kirindi Oya                Sri Lanka             6.2     81.3        1           15.1       0.0     823292.3
+  787   Lambayeque                 Peru                 -7.0    280.1        1           15.0       0.0     823307.3
+  788   Chancay                    Peru                -11.5    282.7        1           15.0       0.0     823322.3
+  789   Mecuburi                   Mozambique          -14.2     40.6        1           15.0       0.0     823337.3
+  790   Macoris                    Dominican Rep.       18.4    290.8        1           14.7       0.0     823351.9
+  791   Martha Brae                Jamaica              18.5    282.7        1           14.5       0.0     823366.4
+  792   Skjern                     Denmark              56.0      8.1        1           14.4       0.0     823380.8
+  793   Navarro                    USA                  39.2    236.2        1           14.4       0.0     823395.2
+  794   Sout                       South Africa        -31.6     18.2        1           14.2       0.0     823409.4
+  795   Aruvi Aru (Malwatu Oya)    Sri Lanka             8.6     79.8        3           14.2       3.0     823423.6
+  796   Elqui                      Chile               -30.0    289.5        1           14.0       0.0     823437.6
+  797   Boac                       Philippines          13.5    121.8        1           13.9       0.0     823451.4
+  798   Erzeni                     Albania              41.4     19.4        1           13.7       0.0     823465.1
+  799   Dra                        Morocco              28.7    348.3        1           13.5       0.0     823478.6
+  800   Los Esclavos               Guatemala            13.8    269.4        2           13.4       2.4     823492.0
+  801   Zaza                       Cuba                 21.7    280.5        1           13.2       0.0     823505.2
+  802   Mamoni                     Panama                9.0    281.0        1           13.0       0.0     823518.2
+  803   Great                      Jamaica              18.4    282.0        1           13.0       0.0     823531.2
+  804   Acari                      Peru                -15.8    285.3        1           13.0       0.0     823544.2
+  805   Chili                      Peru                -16.8    287.6        1           13.0       0.0     823557.2
+  806   Tavignano                  Sardinia             42.6      9.5        1           13.0       0.0     823570.2
+  807   Caroni                     Trinidad&Tobago      10.6    299.0        1           13.0       0.0     823583.2
+  808   Lau                        Morocco              35.4    354.9        1           13.0       0.0     823596.2
+  809   Papenoo                    Tahiti              -17.5    210.6        1           12.9       0.0     823609.1
+  810   Soco                       Dominican Rep.       18.4    290.9        1           12.7       0.0     823621.8
+  811   Great Fish                 South Africa        -33.6     27.1        2           12.6       5.8     823634.4
+  812   Heda Oya                   Sri Lanka             6.9     81.7        1           12.5       0.0     823646.9
+  813   Great Ouse                 United Kingdom       52.8      0.4        1           12.3       0.0     823659.2
+  814   Bananito                   Costa Rica            9.9    277.1        1           12.0       0.0     823671.2
+  815   Agneby                     Ivory Coast           5.3    355.7        1           12.0       0.0     823683.2
+  816   Gualala                    USA                  38.7    236.4        1           11.8       0.0     823695.0
+  817   Dajabon                    Dominican Rep.       19.7    288.3        1           11.8       0.0     823706.8
+  818   Cuyaguateje                Cuba                 22.0    276.0        1           11.1       0.0     823717.9
+  819   Ica                        Peru                -15.0    284.5        1           11.0       0.0     823728.9
+  820   Choapa                     Chile               -31.5    288.4        1           11.0       0.0     823739.9
+  821   Tocuyo                     Venezuela            11.2    291.7        2           10.9       1.1     823750.8
+  822   Salinas                    USA                  36.7    238.2        1           10.9       0.0     823761.7
+  823   Mi Oya                     Sri Lanka             8.1     79.8        1           10.7       0.0     823772.4
+  824   Ciri                       Panama                9.3    280.1        1           10.3       0.0     823782.7
+  825   Nene                       United Kingdom       52.8      0.3        2           10.1       1.1     823792.8
+  826   Moche                      Peru                 -8.2    281.0        1           10.0       0.0     823802.8
+  827   Samala                     Guatemala            14.2    268.2        1           10.0       0.0     823812.8
+  828   Madre Vieja                Guatemala            14.0    268.5        1           10.0       0.0     823822.8
+  829   Warren                     Australia           -34.7    115.8        1           10.0       0.0     823832.8
+  830   San Juan                   Chile               -53.7    289.9        1           10.0       0.0     823842.8
+  831   Limari                     Chile               -30.7    288.2        2            9.8       1.8     823852.6
+  832   Jaina                      Dominican Rep.       18.3    289.3        1            9.6       0.0     823862.3
+  833   Sio                        Togo                  6.1      1.3        1            9.5       0.0     823871.8
+  834   Rio Cobre                  Jamaica              17.9    282.9        1            9.4       0.0     823881.1
+  835   Sundays                    South Africa        -33.7     25.8        1            9.4       0.0     823890.5
+  836   Riviere du Mat             Reunion             -21.0     55.5        1            9.4       0.0     823899.9
+  837   North Oropuche             Trinidad&Tobago      10.6    299.0        1            9.4       0.0     823909.3
+  838   Gudena                     Denmark              56.3     10.1        2            9.3       6.8     823918.6
+  839   Damuji                     Cuba                 22.0    279.5        1            9.1       0.0     823927.7
+  840   Yauca                      Peru                -15.9    285.5        1            9.0       0.0     823936.7
+  841   Yaracuy                    Venezuela            10.7    291.7        1            9.0       0.0     823945.7
+  842   Chillon                    Peru                -11.9    282.8        1            9.0       0.0     823954.7
+  843   Minab                      Iran                 27.0     57.0        1            9.0       0.0     823963.7
+  844   Murray 2                   Australia           -32.7    115.7        1            9.0       0.0     823972.7
+  845   Madre de Dios              Costa Rica           10.2    276.7        1            9.0       0.0     823981.7
+  846   Garcia                     USA                  38.9    236.3        1            9.0       0.0     823990.7
+  847   Neckor                     Morocco              35.2    356.2        1            9.0       0.0     823999.7
+  848   Sana                       Peru                 -7.2    280.4        1            8.3       0.0     824008.0
+  849   Hutt                       New Zealand         -41.3    174.8        1            8.3       0.0     824016.3
+  850   Boqueron                   Panama                8.3    277.5        1            8.0       0.0     824024.3
+  851   Kerte                      Morocco              35.3    356.7        1            8.0       0.0     824032.3
+  852   Carron                     United Kingdom       57.8    355.8        2            7.9       0.0     824040.2
+  853   Chavon                     Dominican Rep.       18.4    291.2        1            7.9       0.0     824048.1
+  854   Tontouna                   New Caledonia       -21.9    166.1        2            7.9       5.2     824055.9
+  855   Grande Riviere du Nord     Haiti                19.7    287.6        1            7.8       0.0     824063.8
+  856   Jiboa                      El Salvador          13.4    270.9        1            7.6       0.0     824071.4
+  857   Isser                      Algeria              36.7      3.6        1            7.6       0.0     824079.0
+  858   Rhis                       Morocco              35.2    356.1        1            7.5       0.0     824086.5
+  859   Paiva                      Portugal             41.1    351.9        1            7.2       0.0     824093.7
+  860   Les Trois Rivieres         Haiti                19.9    287.1        1            7.2       0.0     824100.9
+  861   Russell Creek              United States        55.2    197.3        1            7.2       0.0     824108.1
+  862   Liffey                     Ireland              53.3    353.8        1            7.2       0.0     824115.3
+  863   Io Grande                  Sao Tome              0.2      6.7        1            7.1       0.0     824122.4
+  864   Souss                      Morocco              30.5    350.3        1            7.0       0.0     824129.4
+  865   Quinne                     New Caledonia       -22.0    166.7        1            7.0       0.0     824136.4
+  866   Manganui                   New Zealand         -39.0    174.2        1            7.0       0.0     824143.4
+  867   Sado                       Portugal             38.5    351.1        1            6.8       0.0     824150.2
+  868   Caimito                    Panama                8.7    280.3        1            6.8       0.0     824157.0
+  869   Hilabangan                 Philippines          10.1    122.7        1            6.7       0.0     824163.7
+  870   Tchamba                    New Caledonia       -21.1    165.5        1            6.6       0.0     824170.3
+  871   Mazafran                   Algeria              36.8      2.8        1            6.5       0.0     824176.8
+  872   Doring                     South Africa        -31.7     18.2        1            6.5       0.0     824183.3
+  873   Grand River South East     Mauritius           -20.2     57.7        1            6.3       0.0     824189.6
+  874   Momance                    Haiti                18.7    287.3        1            6.2       0.0     824195.8
+  875   Sosonate                   El Salvador          13.6    270.3        1            6.1       0.0     824201.9
+  876   Bras de la Plaine          Reunion             -21.0     55.5        1            6.1       0.0     824208.1
+  877   Casma                      Peru                 -9.5    281.7        1            6.0       0.0     824214.1
+  878   Montepuez                  Mozambique          -12.5     40.5        1            6.0       0.0     824220.1
+  879   Noyo                       USA                  39.3    236.2        1            6.0       0.0     824226.1
+  880   Treene                     Germany              54.4      9.0        1            6.0       0.0     824232.1
+  881   Ouaieme                    New Caledonia       -20.6    164.9        1            6.0       0.0     824238.1
+  882   Grand Goyave               Guadeloupe           16.3    298.4        2            5.8       1.3     824243.9
+  883   Tafna                      Algeria              35.3    358.4        1            5.5       0.0     824249.4
+  884   Dumbea Nord                New Caledonia       -22.2    166.4        1            5.4       0.0     824254.8
+  885   Jacmel                     Haiti                18.2    287.4        1            5.3       0.0     824260.1
+  886   Riviere des Marsouins      Reunion             -21.0     55.5        1            5.3       0.0     824265.4
+  887   Bouselam                   Algeria              36.8      5.0        1            5.1       0.0     824270.5
+  888   Hienghene                  New Caledonia       -20.7    165.0        1            5.0       0.0     824275.5
+  889   Massacre                   Haiti                19.7    288.0        1            5.0       0.0     824280.5
+  890   Golo                       Sardinia             42.6      9.5        1            5.0       0.0     824285.5
+  891   Taravo                     Sardinia             41.6      8.8        1            5.0       0.0     824290.5
+  892   Dumbea Est                 New Caledonia       -22.2    166.4        1            4.9       0.0     824295.4
+  893   Algoa (Port Elizabeth)     South Africa        -33.9     25.7        1            4.8       0.0     824300.2
+  894   Mkomasi                    Tanzania             -5.5     39.2        1            4.7       0.0     824304.9
+  895   Huasco                     Chile               -28.0    288.7        1            4.7       0.0     824309.6
+  896   Salado                     Cuba                 20.6    282.5        1            4.6       0.0     824314.2
+  897   Tiwaka                     New Caledonia       -20.9    165.3        1            4.6       0.0     824318.8
+  898   Ponerihoven                New Caledonia       -21.2    165.4        1            4.6       0.0     824323.4
+  899   Riviere des Roches         Reunion             -21.0     55.5        1            4.2       0.0     824327.6
+  900   Tipindje                   New Caledonia       -20.8    165.1        1            4.2       0.0     824331.8
+  901   Maboa                      Sierra Leone          7.6    347.9        1            4.1       0.0     824335.9
+  902   Odelouca                   Portugal             37.1    351.4        1            4.0       0.0     824339.9
+  903   Viru                       Peru                 -8.5    281.3        1            4.0       0.0     824343.9
+  904   Huarmey                    Peru                -10.1    281.9        1            4.0       0.0     824347.9
+  905   Lurin                      Peru                -12.3    283.1        1            4.0       0.0     824351.9
+  906   Bravo                      Colombia              4.1     77.5        1            3.9       0.0     824355.8
+  907   Ozat                       India                20.7     86.8        1            3.8       0.0     824359.6
+  908   Segura                     Spain                38.1    359.3        1            3.8       0.0     824363.4
+  909   Little                     USA                  41.0    235.9        1            3.8       0.0     824367.3
+  910   Riviere Des Creoles        Mauritius           -20.2     57.7        1            3.8       0.0     824371.1
+  911   Boghen                     New Caledonia       -21.8    165.2        1            3.7       0.0     824374.8
+  912   Houaliou                   New Caledonia       -21.3    165.7        1            3.7       0.0     824378.4
+  913   Selwyn                     New Zealand         -43.9    172.4        1            3.6       0.0     824382.1
+  914   Ayensu                     Ghana                 5.3    359.5        1            3.5       0.0     824385.6
+  915   South Oropuche             Trinidad&Tobago      10.1    298.5        1            3.5       0.0     824389.1
+  916   Ouenghi                    New Caledonia       -22.0    166.0        1            3.5       0.0     824392.6
+  917   Fatenaoue                  New Caledonia       -21.0    164.8        1            3.4       0.0     824395.9
+  918   San Cristobal              Cuba                 23.0    277.7        2            3.2       0.2     824399.1
+  919   Melah                      Algeria              36.7      7.8        1            3.1       0.0     824402.3
+  920   Ortoire                    Trinidad&Tobago      10.3    299.0        1            3.1       0.0     824405.4
+  921   San Diego                  Cuba                 22.4    276.7        1            3.1       0.0     824408.5
+  922   Pangani                    Tanzania             -0.5     39.0        1            3.0       0.0     824411.5
+  923   Cunapo                     Trinidad&Tobago      10.6    299.0        1            2.9       0.0     824414.4
+  924   Tamarindo                  Nicaragua            12.0    273.3        3            2.9       0.3     824417.3
+  925   Five Rivers Combined       Guam                 13.5    144.8        1            2.8       0.0     824420.1
+  926   Deep                       Mauritius           -20.2     57.7        1            2.8       0.0     824422.9
+  927   Riviere des Lacs           New Caledonia       -22.1    167.0        1            2.8       0.0     824425.7
+  928   Casamance                  Senegal              12.5    343.6        1            2.6       0.0     824428.3
+  929   Great Bushmans             South Africa        -33.7     26.7        1            2.6       0.0     824430.9
+  930   Big Sur                    USA                  36.2    238.2        1            2.5       0.0     824433.4
+  931   Riviere Langevin           Reunion             -21.0     55.5        1            2.5       0.0     824435.9
+  932   Brito                      Nicaragua            11.4    274.0        1            2.5       0.0     824438.4
+  933   Nepena                     Peru                 -9.3    281.5        1            2.4       0.0     824440.8
+  934   Elk                        USA                  40.7    235.8        1            2.4       0.0     824443.2
+  935   Lemba                      Sao Tome              0.2      6.7        1            2.4       0.0     824445.6
+  936   Aragua                     Venezuela            10.2    295.3        1            2.3       0.0     824447.9
+  937   Guantanamo                 Cuba                 19.9    284.4        1            2.2       0.0     824450.1
+  938   Riviere La Chaux           Mauritius           -20.2     57.7        1            2.2       0.0     824452.3
+  939   Navet                      Trinidad&Tobago      10.4    299.0        1            2.2       0.0     824454.4
+  940   Papageio                   Sao Tome              0.2      6.7        1            2.1       0.0     824456.6
+  941   Lorrain                    Martinique           14.8    298.9        1            2.1       0.0     824458.7
+  942   Carmel                     USA                  36.5    238.1        1            2.1       0.0     824460.8
+  943   Buffels (Region)           South Africa        -29.6     16.9        1            2.1       0.0     824462.9
+  944   Diahot                     New Caledonia       -20.4    164.3        1            2.1       0.0     824465.1
+  945   Osmore                     Peru                -17.7    288.5        1            2.0       0.0     824467.1
+  946   Copiapo                    Chile               -27.3    289.0        1            2.0       0.0     824469.1
+  947   Tanninim                   Israel               32.6     34.9        1            2.0       0.0     824471.1
+  948   Joumine                    Tunisia              37.3      9.9        1            2.0       0.0     824473.1
+  949   Grand Carbet               Guadeloupe           16.0    298.5        1            1.9       0.0     824474.9
+  950   Ocoa                       Dominican Rep.       18.3    290.0        1            1.9       0.0     824476.8
+  951   Le Lezarde                 Martinique           14.6    299.0        2            1.8       1.0     824478.6
+  952   Waveney                    United Kingdom       52.5      1.7        1            1.8       0.0     824480.4
+  953   Seche                      Mauritius           -20.2     57.7        1            1.8       0.0     824482.3
+  954   Santa Cruz                 Cuba                 23.0    277.7        1            1.7       0.0     824483.9
+  955   Couva                      Trinidad&Tobago      10.2    298.5        1            1.5       0.0     824485.4
+  956   Abade                      Sao Tome              0.2      6.7        1            1.4       0.0     824486.8
+  957   Caplina                    Peru                -18.2    289.3        1            1.2       0.0     824488.0
+  958   Yuma                       Dominican Rep.       18.4    291.4        1            1.2       0.0     824489.2
+  959   Loa                        Chile               -21.3    290.0        2            1.1       0.5     824490.3
+  960   Omakere                    New Zealand         -39.5    176.9        2            1.1       0.3     824491.4
+  961   Tryggevaelde               Denmark              55.3     12.2        1            1.0       0.0     824492.4
+  962   Gibara                     Cuba                 21.1    283.8        1            0.9       0.0     824493.3
+  963   Pedernales                 Dominican Rep.       18.0    288.3        1            0.9       0.0     824494.2
+  964   Kouris                     Cyprus               35.0     33.0        1            0.7       0.0     824494.9
+  965   Moutere                    New Zealand         -41.2    173.0        1            0.7       0.0     824495.6
+  966   Boudouaou                  Algeria              36.8      3.0        1            0.6       0.0     824496.2
+  967   Agua Grande                Sao Tome              0.2      6.7        1            0.6       0.0     824496.8
+  968   La Rioja                   Cuba                 20.5    282.8        1            0.6       0.0     824497.4
+  969   Qishon                     Israel               32.8     35.0        1            0.5       0.0     824497.9
+  970   Yarqon                     Israel               32.2     34.8        1            0.5       0.0     824498.4
+  971   Pudding Creek              USA                  39.5    236.3        1            0.5       0.0     824498.9
+  972   Saint Joseph               Trinidad&Tobago      10.6    298.5        1            0.5       0.0     824499.4
+  973   Rhumel                     Algeria              36.8      6.1        1            0.4       0.0     824499.8
+  974   Manuel Jorge               Sao Tome              0.2      6.7        1            0.4       0.0     824500.2
+  975   Ouro                       Sao Tome              0.2      6.7        1            0.4       0.0     824500.6
+  976   Limnitis                   Cyprus               35.0     33.2        1            0.4       0.0     824500.9
+  977   Uchusuma                   Peru                -18.3    289.6        1            0.4       0.0     824501.3
+  978   Alexander                  Israel               32.4     34.8        1            0.3       0.0     824501.6
+  979   Soreq                      Israel               31.9     34.7        1            0.3       0.0     824501.9
+  980   Bukit Timah                Singapore            13.3    103.8        1            0.3       0.0     824502.3
+  981   Caura                      Trinidad&Tobago      10.6    298.5        1            0.3       0.0     824502.6

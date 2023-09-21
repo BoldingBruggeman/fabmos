@@ -9,7 +9,7 @@ from mpi4py import MPI
 
 
 def map_to_grid(
-    grid: fabmos.domain.Grid,
+    domain: fabmos.domain.Domain,
     lon: npt.ArrayLike,
     lat: npt.ArrayLike,
     flow: npt.ArrayLike,
@@ -17,6 +17,7 @@ def map_to_grid(
     dmax: float = 10.0,
     out: Optional[fabmos.Array] = None,
 ) -> fabmos.Array:
+    grid = domain.T
     unmasked = grid.mask.values == 1
     area = grid.area.values[unmasked]
     vol = area * grid.hn.values[ksurface, unmasked]
