@@ -53,8 +53,8 @@ jobs:
       - name: Run TMM setup in serial
         run: |
           cd MITgcm_2.8deg
-          python ../fabmos/examples/tmm_tracer.py --stop_time="2000-02-01 00:00:00"
+          python ../fabmos/examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
       - name: Run TMM setup in parallel
         run: |
           cd MITgcm_2.8deg
-          mpiexec -n 2 python ../fabmos/examples/tmm_tracer.py --stop_time="2000-02-01 00:00:00"
+          mpiexec -n 2 python ../fabmos/examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
