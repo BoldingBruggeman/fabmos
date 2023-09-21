@@ -9,7 +9,7 @@ calendar = "360_day"  # any valid calendar recognized by cftime, see https://cfc
 
 script_dir = os.path.dirname(__file__)
 fabm_yaml = os.path.join(
-    script_dir, "../extern/ersem/testcases/fabm-ersem-15.06-L4-ben-docdyn-iop.yaml"
+    script_dir, "../../extern/ersem/testcases/fabm-ersem-15.06-L4-ben-docdyn-iop.yaml"
 )
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)

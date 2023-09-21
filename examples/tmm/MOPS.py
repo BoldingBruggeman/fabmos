@@ -12,7 +12,7 @@ tm_config_dir = "."  # directory with a TM configuration from http://kelvin.eart
 calendar = "360_day"  # any valid calendar recognized by cftime, see https://cfconventions.org/cf-conventions/cf-conventions.html#calendar
 
 script_dir = os.path.dirname(__file__)
-fabm_yaml = os.path.join(script_dir, "../extern/fabm-mops/testcases/fabm_with_runoff.yaml")
+fabm_yaml = os.path.join(script_dir, "../../extern/fabm-mops/testcases/fabm_with_runoff.yaml")
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
@@ -26,7 +26,7 @@ sim.fabm.get_dependency("surface_air_pressure").set(101325.0)
 # Load rivers from https://doi.org/10.1029/96JD00932
 # This is a text file with fixed column widths given by the delimiter argument
 rlat, rlon, rflow = np.genfromtxt(
-    os.path.join(script_dir, "tmm/rivrstat.txt"),
+    os.path.join(script_dir, "rivrstat.txt"),
     dtype=None,
     delimiter=(8, 27, 17, 9, 8, 9, 15, 10, 13),
     skip_header=7,
@@ -54,7 +54,7 @@ out = sim.output_manager.add_netcdf_file(
 out.request(*sim.fabm.default_outputs, time_average=True)
 
 start = cftime.datetime(2000, 1, 1, calendar=calendar)
-stop = cftime.datetime(2001, 1, 1, calendar=calendar)
+stop = cftime.datetime(2010, 1, 1, calendar=calendar)
 sim.start(start, timestep=12 * 3600, profile=os.path.basename(__file__))
 while sim.time < stop:
     sim.advance()

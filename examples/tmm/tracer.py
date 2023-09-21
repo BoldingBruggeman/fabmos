@@ -1,6 +1,5 @@
 import sys
 import cftime
-import os
 import argparse
 import datetime
 
@@ -17,7 +16,7 @@ FABM_CONFIG = dict(
 )
 
 parser = argparse.ArgumentParser(
-    description=f"Python implementation of the Transport Matrix Method (TMM) - Khatiwala et. al (2005)",
+    description="Python implementation of the Transport Matrix Method (TMM) - Khatiwala et. al (2005)",
     prog=f"mpiexec -np <N> {sys.argv[0]}",
     epilog="Implemented by BB in the OceanICU Horizon Europe project (Grant No.101083922).",
 )
@@ -50,13 +49,13 @@ parser.add_argument(
         30.0,
         55.0,
     ],
-    help=f"area with concentration set - lon1, lon2, lat1, lat2",
+    help="area with concentration set - lon1, lon2, lat1, lat2",
 )
 parser.add_argument(
     "--calendar",
     type=str,
     default="360_day",
-    help=f"calendar to use - default - 360_day",
+    help="calendar to use - default - 360_day",
 )
 args = parser.parse_args()
 
