@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(FABM_BASE, "src/drivers/python"))
 from build_cmake import CMakeExtension, bdist_wheel, CMakeBuild
 
 setup(
-    packages=["fabmos", "fabmos.transport"],
+    packages=["fabmos", "fabmos.transport", "fabmos.input"],
     package_dir={"": "src"},
     ext_modules=[
         CMakeExtension("fabmos.fabm_tmm", "-DPYFABM_DEFINITIONS=_FABM_DIMENSION_COUNT_=3;_FABM_DEPTH_DIMENSION_INDEX_=3;_FABM_MASK_TYPE_=integer;_FABM_MASKED_VALUE_=0;_FABM_BOTTOM_INDEX_=-1"),

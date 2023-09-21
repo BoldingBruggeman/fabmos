@@ -7,7 +7,7 @@ import functools
 import cftime
 
 import pygetm
-from . import environment
+from . import environment, Array, __version__
 
 
 def log_exceptions(method):
@@ -35,6 +35,7 @@ class Simulator:
         fabm_libname: str = "fabm",
     ):
         self.logger = domain.root_logger
+        self.logger.info(f"fabmos {__version__}")
 
         self.fabm = pygetm.fabm.FABM(
             fabm_config, libname=fabm_libname, time_varying=pygetm.TimeVarying.MICRO
@@ -65,7 +66,7 @@ class Simulator:
             self.logger.getChild("FABM"),
         )
 
-    def __getitem__(self, key: str) -> pygetm.core.Array:
+    def __getitem__(self, key: str) -> Array:
         return self.output_manager.fields[key]
 
     @log_exceptions
@@ -132,10 +133,14 @@ class Simulator:
         )
 
         self.logger.debug(f"fabm advancing to {self.time} (dt={self.timestep} s)")
-        self.fabm.advance(self.timestep)
+        self.advance_fabm(self.timestep)
 
         if apply_transport:
-            self.transport(self.nstep_transport * self.timestep)
+            timestep_transport = self.nstep_transport * self.timestep
+            self.logger.debug(
+                f"transport advancing to {self.time} (dt={timestep_transport} s)"
+            )
+            self.transport(timestep_transport)
 
         self.update_diagnostics(apply_transport)
 
@@ -150,8 +155,11 @@ class Simulator:
         if self.report_totals != 0 and self.istep % self.report_totals == 0:
             self.report_domain_integrals()
 
+    def advance_fabm(self, timestep: float):
+        self.fabm.advance(timestep)
+
     def transport(self, timestep: float):
-        self.logger.debug(f"transport advancing to {self.time} (dt={timestep} s)")
+        pass
 
     @log_exceptions
     def finish(self):

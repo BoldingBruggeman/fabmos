@@ -15,8 +15,7 @@ import h5py
 import pygetm
 import pygetm.parallel
 from pygetm.constants import CENTERS, INTERFACES
-from .. import simulator, environment
-from fabmos import __version__
+from .. import simulator, environment, Array
 
 # Note: mpi4py components should be imported after pygetm.parallel,
 # as the latter configures mpi4py.rc
@@ -141,7 +140,7 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
         source: pygetm.output.operators.Base,
         grid: Optional[pygetm.domain.Grid],
         mapping: np.ndarray,
-        global_array: Optional[pygetm.core.Array] = None,
+        global_array: Optional[Array] = None,
     ):
         self._grid = grid
         self._slice = (mapping,)
@@ -558,6 +557,7 @@ def create_domain(
             H=H,
             spherical=True,
             tiling=tiling,
+            logger=domain.root_logger,
         )
         full_domain.initialize(pygetm.BAROCLINIC)
         _update_coordinates(full_domain.T, dz, da[0, ...])
@@ -626,6 +626,7 @@ class Simulator(simulator.Simulator):
         periodic_forcing: bool = True,
         calendar: str = "standard",
         fabm_config: str = "fabm.yaml",
+        use_runoff: bool = False,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_tmm")
         domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=0)
@@ -636,7 +637,6 @@ class Simulator(simulator.Simulator):
 
         super().__init__(domain, fabm_config, fabm_libname=fabm_libname)
         self.tmm_logger = self.logger.getChild("TMM")
-        self.tmm_logger.info(f"Initializing TMM component: {__version__}")
         _update_coordinates(self.domain.T, self.domain.dz, self.domain.da)
         if self.domain.glob and self.domain.glob is not self.domain:
             _update_coordinates(self.domain.glob.T, self.domain.dz, self.domain.da)
@@ -709,6 +709,55 @@ class Simulator(simulator.Simulator):
             )
 
         self.load_environment(periodic_forcing, calendar)
+        self._runoff_variables: Tuple[
+            Array, Array, Array, Union[datetime.timedelta, int], int
+        ] = []
+
+        self.tot_area = np.asarray(domain.T.area.ma.sum())
+        domain.tiling.comm.Allreduce(MPI.IN_PLACE, self.tot_area, MPI.SUM)
+        self.use_runoff = use_runoff
+        if self.use_runoff:
+            self.runoff = domain.T.array(
+                name="runoff",
+                long_name="water level increase due to rivers",
+                units="m s-1",
+                attrs=dict(_time_varying=False),
+            )
+
+    def request_return_via_runoff(
+        self,
+        source: str,
+        target: str,
+        update_interval: Union[datetime.timedelta, int],
+        initial_value: float = 0.0,
+    ):
+        for v, source_array in self.fabm._variable2array.items():
+            if v.name == source:
+                break
+        else:
+            names = [v.name for v in self.fabm._variable2array]
+            raise Exception(
+                f"Variable {source} not found in FABM model."
+                f" Available: {', '.join(names)}"
+            )
+        source_array.saved = True
+        target_array = self.fabm.get_dependency(target)
+        target_array.fill(initial_value)
+        cum_source = source_array.grid.array(fill=0.0)
+        iupdate_interval = update_interval if isinstance(update_interval, int) else None
+        self._runoff_variables.append(
+            [source_array, target_array, cum_source, update_interval, iupdate_interval]
+        )
+
+    @property
+    def total_runoff(self) -> float:
+        unmasked = self.runoff.grid.mask.values == 1
+        local_flow = (self.runoff.values * self.runoff.grid.area.values).sum(
+            where=unmasked
+        )
+        total_flow = np.asarray(local_flow)
+        self.domain.tiling.comm.Allreduce(MPI.IN_PLACE, total_flow, MPI.SUM)
+        return float(total_flow)
 
     def start(
         self,
@@ -766,6 +815,13 @@ class Simulator(simulator.Simulator):
         )
         self.gather_req = self.gather_tracer()
 
+        for info in self._runoff_variables:
+            interval = info[-2]
+            if isinstance(interval, datetime.timedelta):
+                n = max(1, int(round(interval.total_seconds() / timestep)))
+                self.logger.info(f"{info[1].name} will be updated every {n} steps.")
+                info[-1] = n
+
     def _preload_transport_matrices(self):
         if self.Aexp_src.ndim == 2 and self.Aexp_src._use_cache:
             self.tmm_logger.info("Preloading all explicit matrices")
@@ -775,6 +831,33 @@ class Simulator(simulator.Simulator):
             self.tmm_logger.info("Preloading all implicit matrices")
             for itime in range(self.Aimp_src.shape[0]):
                 self.Aimp_src[itime, self.domain.tmm_slice]
+
+    def advance_fabm(self, timestep: float):
+        for source, target, cum_source, _, freq in self._runoff_variables:
+            cum_source.all_values += source.all_values
+            if self.istep % freq == 0:
+                np.divide(cum_source.all_values, freq, out=target.all_values)
+                target.all_values *= target.grid.area.all_values
+                self.logger.info(
+                    f"Deriving {target.name} from integrated {source.name}"
+                )
+                int_flux = np.asarray(target.ma.sum())
+                self.domain.tiling.comm.Allreduce(MPI.IN_PLACE, int_flux, MPI.SUM)
+                if self.use_runoff:
+                    river_conc = int_flux / self.total_runoff
+                    self.logger.info(
+                        f"Using global riverine concentration = {river_conc} {source.units} s m-1"
+                    )
+                    target.fill(self.runoff.values * river_conc)
+                else:
+                    mean_flux = int_flux / self.tot_area
+                    self.logger.info(
+                        f"Using global mean {source.name} = {mean_flux} {source.units}"
+                    )
+                    target.fill(mean_flux)
+                cum_source.all_values.fill(0.0)
+
+        return super().advance_fabm(timestep)
 
     def transport(self, timestep: float):
         # Compute the change in tracers due to biogeochemical [FABM] processes
@@ -811,7 +894,7 @@ class Simulator(simulator.Simulator):
 
         def _get_variable(
             path: str, varname: str, **kwargs
-        ) -> Tuple[pygetm.core.Array, xr.DataArray]:
+        ) -> Tuple[Array, xr.DataArray]:
             array = self.domain.T.array(**kwargs)
             src = get_mat_array(
                 path,
