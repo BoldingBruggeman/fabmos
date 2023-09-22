@@ -766,10 +766,9 @@ class Simulator(simulator.Simulator):
                 f" of the original online timestep of {self.domain._delta_t} s"
             )
 
-        assert (nphys % 1.0) < 1e-8
         self.Aexp_src.scale_factor = dt
         self.Aexp_src.add_identity = True
-        self.Aimp_src.power = int(nphys)
+        self.Aimp_src.power = int(round(nphys))
         if self.Aexp_src.ndim == 1:
             self.Aexp.data[:] = self.Aexp_src
         if self.Aimp_src.ndim == 1:
