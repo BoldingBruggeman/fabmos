@@ -1,4 +1,3 @@
-import sys
 import os
 import functools
 import datetime
@@ -59,7 +58,12 @@ def get_mat_array(
 ) -> xr.DataArray:
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
-    data = MatArray(path, name)
+    return _wrap_ongrid_array(MatArray(path, name), grid_file, times)
+
+
+def _wrap_ongrid_array(
+    data: MatArray, grid_file: str, times: Optional[npt.ArrayLike] = None
+) -> xr.DataArray:
     x, y, dz = _load_mat(grid_file, "x", "y", "dz")
     dims = ["y", "x"]
     coords = {}
@@ -253,7 +257,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         else:
             self.dense_shape = (counts[rank], counts.sum())
 
-        nbytes = indptr[-1] * dtype.itemsize * len(file_list)
+        nbytes = float(indptr[-1]) * dtype.itemsize * len(file_list)
         self._cache = {}
         self._use_cache = nbytes < self.MAX_CACHE_SIZE and len(file_list) > 1
 
@@ -448,13 +452,25 @@ def _load_mat(
 ) -> Union[np.ndarray, Tuple[np.ndarray]]:
     if not os.path.isfile(fn):
         raise Exception(f"File {fn} does not exist")
+
     values = []
-    with h5py.File(fn) as ds:
+    try:
+        # MATLAB >= 7.3 format (HDF5)
+        with h5py.File(fn) as ds:
+            for name in names:
+                values.append(np.asarray(ds[name], dtype=dtype))
+    except OSError:
+        # MATLAB < 7.3 format
+        name2values = scipy.io.loadmat(fn)
         for name in names:
-            data = np.asarray(ds[name], dtype=dtype)
-            while data.ndim and data.shape[0] == 1:
-                data = data[0, ...]
-            values.append(data)
+            values.append(name2values[name])
+
+    def _process(data):
+        while data.ndim and data.shape[0] == 1:
+            data = data[0, ...]
+        return data
+    values = [_process(v) for v in values]
+
     return values[0] if len(names) == 1 else tuple(values)
 
 
@@ -880,17 +896,15 @@ class Simulator(simulator.Simulator):
             path: str, varname: str, **kwargs
         ) -> Tuple[Array, xr.DataArray]:
             array = self.domain.T.array(**kwargs)
-            src = get_mat_array(
-                path,
-                varname,
-                self.domain._grid_file,
-                times=times,
-            )
+            src = get_mat_array(path, varname, self.domain._grid_file, times=times)
+            _set(array, src)
+            return array, src
+
+        def _set(array, src):
             if not periodic:
                 src = src.mean(dim="time")
                 array.attrs["_time_varying"] = False
             array.set(src, on_grid=pygetm.input.OnGrid.ALL, climatology=periodic)
-            return array, src
 
         self.temp, temp_src = _get_variable(
             os.path.join(root, "GCM/Theta_gcm.mat"),
@@ -940,3 +954,33 @@ class Simulator(simulator.Simulator):
             long_name="ice cover",
             fabm_standard_name="ice_area_fraction",
         )
+
+        fwf_path = os.path.join(root, "GCM/FreshWaterForcing_gcm.mat")
+        tau = _load_mat(fwf_path, "saltRelaxTimegcm")
+        if np.any(tau):
+            self.logger.info(
+                "Reconstructing net freshwater flux from salinity relaxation"
+                " in original hydrodynamic simulation"
+            )
+            assert np.ndim(tau) == 0
+            Srelax_src = MatArray(fwf_path, "Srelaxgcm")
+            dz = _load_mat(self.domain._grid_file, "dz")
+            salt_sf_src = pygetm.input.Slice(
+                pygetm.input._as_lazyarray(salt_src),
+                shape=Srelax_src.shape,
+                passthrough={0: 0, 1: 2, 2: 3},
+            )
+            src_slice = (slice(None), 0, slice(None), slice(None))
+            tgt_slice = (slice(None), slice(None), slice(None))
+            salt_sf_src._slices.append((src_slice, tgt_slice))
+            emp_src = (Srelax_src / salt_sf_src - 1.0) * (dz[0, ...] / tau)
+        else:
+            self.logger.info(
+                "Using freshwater flux from original hydrodynamic simulation"
+            )
+            emp_src = MatArray(fwf_path, "EmPgcm")
+        emp_src = _wrap_ongrid_array(emp_src, self.domain._grid_file, times=times)
+        self.emp = self.domain.T.array(
+            name="emp", units="m s-1", long_name="evaporation minus precipitation"
+        )
+        _set(self.emp, emp_src)
