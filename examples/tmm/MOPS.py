@@ -24,15 +24,18 @@ sim.fabm.get_dependency("mole_fraction_of_carbon_dioxide_in_air").set(280.0)
 sim.fabm.get_dependency("surface_air_pressure").set(101325.0)
 
 # Load rivers from https://doi.org/10.1029/96JD00932
-fn = os.path.join(script_dir, "rivrstat.txt")
-rlat, rlon, rflow = pd.read_fwf(fn, skiprows=7, header=None, usecols=(3, 4, 6)).T.values
+rivers = pd.read_fwf(
+    os.path.join(script_dir, "rivrstat.txt"),
+    skiprows=7,
+    usecols=(1, 2, 3, 4, 6),
+    names=("name", "country", "lat", "lon", "flow"),
+)
 
-# Exclude rivers flowing into Arctic as in https://doi.org/10.5194/bg-10-8401-2013
-keep = rlat <= 60
-rlat, rlon, rflow = rlat[keep], rlon[keep], rflow[keep]
+# Exclude Arctic rivers as in https://doi.org/10.5194/bg-10-8401-2013
+rivers = rivers.loc[rivers.lat <= 60.0]
 
 # Convert river list to gridded [2D] river inputs (level increase in m s-1)
-runoff = fabmos.input.riverlist.map_to_grid(domain, rlon, rlat, rflow)
+runoff = fabmos.input.riverlist.map_to_grid(domain, rivers.lon, rivers.lat, rivers.flow)
 
 # Reintroduce buried phosphorus, weighted by river runoff
 # (https://doi.org/10.5194/bg-10-8401-2013)
