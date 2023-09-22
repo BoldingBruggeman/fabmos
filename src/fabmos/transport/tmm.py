@@ -749,16 +749,6 @@ class Simulator(simulator.Simulator):
             [source_array, target_array, cum_source, update_interval, iupdate_interval]
         )
 
-    @property
-    def total_runoff(self) -> float:
-        unmasked = self.runoff.grid.mask.values == 1
-        local_flow = (self.runoff.values * self.runoff.grid.area.values).sum(
-            where=unmasked
-        )
-        total_flow = np.asarray(local_flow)
-        self.domain.tiling.comm.Allreduce(MPI.IN_PLACE, total_flow, MPI.SUM)
-        return float(total_flow)
-
     def start(
         self,
         time: Union[cftime.datetime, datetime.datetime],
@@ -841,10 +831,12 @@ class Simulator(simulator.Simulator):
                 self.logger.info(
                     f"Deriving {target.name} from integrated {source.name}"
                 )
-                int_flux = np.asarray(target.ma.sum())
-                self.domain.tiling.comm.Allreduce(MPI.IN_PLACE, int_flux, MPI.SUM)
+                unmasked = target.grid.mask == 1
+                int_flux = target.global_sum(where=unmasked, to_all=True)
                 if self.use_runoff:
-                    river_conc = int_flux / self.total_runoff
+                    runoff_vol = self.runoff * self.runoff.grid.area
+                    tot_runoff_vol = runoff_vol.global_sum(where=unmasked, to_all=True)
+                    river_conc = int_flux / tot_runoff_vol
                     self.logger.info(
                         f"Using global riverine concentration = {river_conc} {source.units} s m-1"
                     )
