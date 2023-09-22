@@ -973,6 +973,12 @@ class Simulator(simulator.Simulator):
             src_slice = (slice(None), 0, slice(None), slice(None))
             tgt_slice = (slice(None), slice(None), slice(None))
             salt_sf_src._slices.append((src_slice, tgt_slice))
+
+            # The change in surface salinity due to relaxation is
+            #   (S_relax - S) / tau (# m-3 s-1)
+            # Multiply with top layer thickness dz to obtain a surface flux (# m-2 s-1)
+            # This must equal the virtual salt flux of S * fwf
+            # Thus, fwf = (S_relax / S - 1) * dz / tau
             emp_src = (Srelax_src / salt_sf_src - 1.0) * (dz[0, ...] / tau)
         else:
             self.logger.info(
