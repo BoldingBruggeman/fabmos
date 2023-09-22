@@ -857,6 +857,12 @@ class Simulator(simulator.Simulator):
                 target.fill(values)
                 cum_source.all_values.fill(0.0)
 
+        # Add virtual flux due to evaporation and precipitation
+        scale = 1.0 + timestep * self.emp.values / self.domain.T.hn.values[0, ...]
+        for tracer in self.tracers:
+            if not tracer.precipitation_follows_target_cell:
+                tracer.values[0, :, :] *= scale
+
         return super().advance_fabm(timestep)
 
     def transport(self, timestep: float):
