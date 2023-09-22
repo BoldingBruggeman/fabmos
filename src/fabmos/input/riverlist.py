@@ -14,8 +14,7 @@ def map_to_grid(
     lat: npt.ArrayLike,
     flow: npt.ArrayLike,
     ksurface: int = 0,
-    dmax: float = 10.0,
-    out: Optional[fabmos.Array] = None,
+    dmax: float = 10.0
 ) -> fabmos.Array:
     grid = domain.T
     unmasked = grid.mask.values == 1
@@ -59,11 +58,10 @@ def map_to_grid(
     )
     h_increase_per_cell = h_increase_per_cell_per_river.sum(axis=0)
     # flow_tot = flow[active_rivers].sum()
-    if out is None:
-        out = grid.array(
-            long_name="water level increase due to rivers",
-            units="m s-1",
-            attrs=dict(_time_varying=False),
-        )
+    out = grid.array(
+        long_name="water level increase due to rivers",
+        units="m s-1",
+        attrs=dict(_time_varying=False),
+    )
     out.values[unmasked] = h_increase_per_cell
     return out

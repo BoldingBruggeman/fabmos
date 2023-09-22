@@ -12,13 +12,13 @@ tm_config_dir = "."  # directory with a TM configuration from http://kelvin.eart
 calendar = "360_day"  # any valid calendar recognized by cftime, see https://cfconventions.org/cf-conventions/cf-conventions.html#calendar
 
 script_dir = os.path.dirname(__file__)
-fabm_yaml = os.path.join(script_dir, "../../extern/fabm-mops/testcases/fabm_with_runoff.yaml")
+fabm_yaml = os.path.join(
+    script_dir, "../../extern/fabm-mops/testcases/fabm_with_runoff.yaml"
+)
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
-sim = fabmos.transport.tmm.Simulator(
-    domain, calendar=calendar, fabm_config=fabm_yaml, use_runoff=True
-)
+sim = fabmos.transport.tmm.Simulator(domain, calendar=calendar, fabm_config=fabm_yaml)
 
 sim.fabm.get_dependency("mole_fraction_of_carbon_dioxide_in_air").set(280.0)
 sim.fabm.get_dependency("surface_air_pressure").set(101325.0)
@@ -41,11 +41,12 @@ keep = rlat <= 60
 rlat, rlon, rflow = rlat[keep], rlon[keep], rflow[keep]
 
 # Convert river list to gridded [2D] river inputs (level increase in m s-1)
-fabmos.input.riverlist.map_to_grid(domain, rlon, rlat, rflow, out=sim.runoff)
+runoff = fabmos.input.riverlist.map_to_grid(domain, rlon, rlat, rflow)
 
-# Reintroduce buried phosphorus in river runoff, https://doi.org/10.5194/bg-10-8401-2013
-sim.request_return_via_runoff(
-    "det/burial", "runoff/source", datetime.timedelta(days=360)
+# Reintroduce buried phosphorus, weighted by river runoff
+# (https://doi.org/10.5194/bg-10-8401-2013)
+sim.request_redistribution(
+    "det/burial", "runoff/source", runoff, datetime.timedelta(days=360)
 )
 
 out = sim.output_manager.add_netcdf_file(

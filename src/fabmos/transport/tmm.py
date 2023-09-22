@@ -626,7 +626,6 @@ class Simulator(simulator.Simulator):
         periodic_forcing: bool = True,
         calendar: str = "standard",
         fabm_config: str = "fabm.yaml",
-        use_runoff: bool = False,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_tmm")
         domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=0)
@@ -709,25 +708,17 @@ class Simulator(simulator.Simulator):
             )
 
         self.load_environment(periodic_forcing, calendar)
-        self._runoff_variables: Tuple[
-            Array, Array, Array, Union[datetime.timedelta, int], int
+        self._redistribute: Tuple[
+            Array, Array, Array, Optional[Array], Union[datetime.timedelta, int], int
         ] = []
 
-        self.tot_area = np.asarray(domain.T.area.ma.sum())
-        domain.tiling.comm.Allreduce(MPI.IN_PLACE, self.tot_area, MPI.SUM)
-        self.use_runoff = use_runoff
-        if self.use_runoff:
-            self.runoff = domain.T.array(
-                name="runoff",
-                long_name="water level increase due to rivers",
-                units="m s-1",
-                attrs=dict(_time_varying=False),
-            )
+        self.tot_area = domain.T.area.global_sum(where=domain.T.mask == 1, to_all=True)
 
-    def request_return_via_runoff(
+    def request_redistribution(
         self,
         source: str,
         target: str,
+        weights: Optional[Array],
         update_interval: Union[datetime.timedelta, int],
         initial_value: float = 0.0,
     ):
@@ -744,9 +735,9 @@ class Simulator(simulator.Simulator):
         target_array = self.fabm.get_dependency(target)
         target_array.fill(initial_value)
         cum_source = source_array.grid.array(fill=0.0)
-        iupdate_interval = update_interval if isinstance(update_interval, int) else None
-        self._runoff_variables.append(
-            [source_array, target_array, cum_source, update_interval, iupdate_interval]
+        iupdate = update_interval if isinstance(update_interval, int) else None
+        self._redistribute.append(
+            [source_array, target_array, cum_source, weights, update_interval, iupdate]
         )
 
     def start(
@@ -805,12 +796,14 @@ class Simulator(simulator.Simulator):
         )
         self.gather_req = self.gather_tracer()
 
-        for info in self._runoff_variables:
+        for info in self._redistribute:
             interval = info[-2]
             if isinstance(interval, datetime.timedelta):
-                n = max(1, int(round(interval.total_seconds() / timestep)))
-                self.logger.info(f"{info[1].name} will be updated every {n} steps.")
-                info[-1] = n
+                info[-1] = max(1, int(round(interval.total_seconds() / timestep)))
+            self.logger.info(
+                f"Flux redistribution: {info[1].name} will be updated "
+                f"every {info[-1]} steps."
+            )
 
     def _preload_transport_matrices(self):
         if self.Aexp_src.ndim == 2 and self.Aexp_src._use_cache:
@@ -823,30 +816,30 @@ class Simulator(simulator.Simulator):
                 self.Aimp_src[itime, self.domain.tmm_slice]
 
     def advance_fabm(self, timestep: float):
-        for source, target, cum_source, _, freq in self._runoff_variables:
+        for source, target, cum_source, w, _, freq in self._redistribute:
             cum_source.all_values += source.all_values
             if self.istep % freq == 0:
+                self.logger.info(
+                    f"Deriving {target.name} from horizontally integrated {source.name}"
+                )
                 np.divide(cum_source.all_values, freq, out=target.all_values)
                 target.all_values *= target.grid.area.all_values
-                self.logger.info(
-                    f"Deriving {target.name} from integrated {source.name}"
-                )
                 unmasked = target.grid.mask == 1
                 int_flux = target.global_sum(where=unmasked, to_all=True)
-                if self.use_runoff:
-                    runoff_vol = self.runoff * self.runoff.grid.area
-                    tot_runoff_vol = runoff_vol.global_sum(where=unmasked, to_all=True)
-                    river_conc = int_flux / tot_runoff_vol
+                if w is not None:
+                    w_int = (w * w.grid.area).global_sum(where=unmasked, to_all=True)
+                    scale_factor = int_flux / w_int
                     self.logger.info(
-                        f"Using global riverine concentration = {river_conc} {source.units} s m-1"
+                        f"  global scale factor for {target.name} "
+                        f"= {scale_factor} {source.units} ({w.units})-1"
                     )
-                    target.fill(self.runoff.values * river_conc)
+                    values = w.values * scale_factor
                 else:
-                    mean_flux = int_flux / self.tot_area
+                    values = int_flux / self.tot_area
                     self.logger.info(
-                        f"Using global mean {source.name} = {mean_flux} {source.units}"
+                        f"  global mean {source.name} = {values} {source.units}"
                     )
-                    target.fill(mean_flux)
+                target.fill(values)
                 cum_source.all_values.fill(0.0)
 
         return super().advance_fabm(timestep)
