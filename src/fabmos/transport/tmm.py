@@ -200,7 +200,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         rank: int,
         comm: MPI.Comm,
         order: Optional[np.ndarray] = None,
-        logger=None,
+        logger: Optional[logging.Logger] = None,
         localize: bool = False,
     ):
         if logger:
@@ -235,8 +235,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         # Get local sparse array indices
         istartrow = offsets[rank]
         istoprow = istartrow + counts[rank]
-        self.indptr = np.asarray(indptr[istartrow : istoprow + 1])
-        self.indptr -= self.indptr[0]
+        self.indptr = indptr[istartrow : istoprow + 1] - indptr[istartrow]
         self.indices = np.empty((self.indptr[-1],), indptr.dtype)
         mpi_dtype = mpi4py.util.dtlib.from_numpy_dtype(self.indices.dtype)
         comm.Scatterv(
@@ -257,9 +256,21 @@ class TransportMatrix(pygetm.input.LazyArray):
         else:
             self.dense_shape = (counts[rank], counts.sum())
 
-        nbytes = float(indptr[-1]) * dtype.itemsize * len(file_list)
+        nbytes = float(max(self._counts)) * dtype.itemsize * len(file_list)
         self._cache = {}
         self._use_cache = nbytes < self.MAX_CACHE_SIZE and len(file_list) > 1
+        if self._use_cache:
+            logger.info(
+                f"All {len(file_list)} {name} arrays will be cached in memory."
+                f" This requires {nbytes / 1024**3:.3} GB, which is less than the"
+                f" maximum allowed cache size of {self.MAX_CACHE_SIZE / 1024**3} GB"
+            )
+        elif len(file_list) > 1:
+            logger.info(
+                f"Not caching {name} arrays because this would require"
+                f" {nbytes / 1024**3:.3} GB, which is more than the maximum allowed"
+                f" cache size of {self.MAX_CACHE_SIZE / 1024**3} GB"
+            )
 
         shape = (self.indices.size,)
         if len(file_list) > 1:
