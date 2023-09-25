@@ -33,8 +33,12 @@ class Simulator:
         domain: pygetm.domain.Domain,
         fabm_config: str = "fabm.yaml",
         fabm_libname: str = "fabm",
+        log_level: Optional[int] = None,
+        use_virtual_flux: bool = False,
     ):
         self.logger = domain.root_logger
+        if log_level is not None:
+            self.logger.setLevel(log_level)
         self.logger.info(f"fabmos {__version__}")
 
         self.fabm = pygetm.fabm.FABM(
@@ -66,6 +70,15 @@ class Simulator:
             self.logger.getChild("FABM"),
         )
 
+        if use_virtual_flux:
+            self.pe = self.domain.T.array(
+                name="pe",
+                units="m s-1",
+                long_name="net freshwater flux due to precipitation, condensation,"
+                " evaporation",
+            )
+        self.use_virtual_flux = use_virtual_flux
+
     def __getitem__(self, key: str) -> Array:
         return self.output_manager.fields[key]
 
@@ -94,6 +107,12 @@ class Simulator:
                 f"The transport timestep of {transport_timestep} s must be an"
                 f" exact multiple of the biogeochemical timestep of {timestep} s"
             )
+
+        self.tracers_with_virtual_flux: List[pygetm.tracer.Tracer] = []
+        if self.use_virtual_flux:
+            for tracer in self.tracers:
+                if not tracer.precipitation_follows_target_cell:
+                    self.tracers_with_virtual_flux.append(tracer)
 
         self.time = pygetm.simulation.to_cftime(time)
         self.logger.info(f"Starting simulation at {self.time}")
@@ -156,6 +175,12 @@ class Simulator:
             self.report_domain_integrals()
 
     def advance_fabm(self, timestep: float):
+        if self.tracers_with_virtual_flux:
+            # Add virtual flux due to precipitation - evaporation
+            scale = 1.0 - timestep * self.pe.values / self.domain.T.hn.values[0, ...]
+            for tracer in self.tracers_with_virtual_flux:
+                tracer.values[0, :, :] *= scale
+
         self.fabm.advance(timestep)
 
     def transport(self, timestep: float):

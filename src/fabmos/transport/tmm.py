@@ -205,6 +205,7 @@ class TransportMatrix(pygetm.input.LazyArray):
     ):
         if logger:
             logger.info(f"Initializing {name} arrays")
+        self.logger = logger
         self._file_list = file_list
         self._group_name = name
 
@@ -653,6 +654,7 @@ class Simulator(simulator.Simulator):
         periodic_forcing: bool = True,
         calendar: str = "standard",
         fabm_config: str = "fabm.yaml",
+        log_level: Optional[int] = None,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_tmm")
         domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=0)
@@ -661,7 +663,14 @@ class Simulator(simulator.Simulator):
         domain.bottom_indices = domain.T.array(dtype=np.intc, fill=0)
         domain.bottom_indices.values[0, :] = domain.ideep_loc
 
-        super().__init__(domain, fabm_config, fabm_libname=fabm_libname)
+        super().__init__(
+            domain,
+            fabm_config,
+            fabm_libname=fabm_libname,
+            log_level=log_level,
+            use_virtual_flux=True,
+        )
+
         self.tmm_logger = self.logger.getChild("TMM")
         _update_coordinates(self.domain.T, self.domain.dz, self.domain.da)
         if self.domain.glob and self.domain.glob is not self.domain:
@@ -868,12 +877,6 @@ class Simulator(simulator.Simulator):
                 target.fill(values)
                 cum_source.all_values.fill(0.0)
 
-        # Add virtual flux due to evaporation and precipitation
-        scale = 1.0 + timestep * self.emp.values / self.domain.T.hn.values[0, ...]
-        for tracer in self.tracers:
-            if not tracer.precipitation_follows_target_cell:
-                tracer.values[0, :, :] *= scale
-
         return super().advance_fabm(timestep)
 
     def transport(self, timestep: float):
@@ -994,16 +997,13 @@ class Simulator(simulator.Simulator):
             # The change in surface salinity due to relaxation is
             #   (S_relax - S) / tau (# m-3 s-1)
             # Multiply with top layer thickness dz to obtain a surface flux (# m-2 s-1)
-            # This must equal the virtual salt flux of S * fwf
-            # Thus, fwf = (S_relax / S - 1) * dz / tau
-            emp_src = (Srelax_src / salt_sf_src - 1.0) * (dz[0, ...] / tau)
+            # This must equal the virtual salt flux of -S * pe
+            # Thus, pe = (1 - S_relax / S) * dz / tau
+            pe_src = (1.0 - Srelax_src / salt_sf_src) * (dz[0, ...] / tau)
         else:
             self.logger.info(
-                "Using freshwater flux from original hydrodynamic simulation"
+                "Using net freshwater flux from original hydrodynamic simulation"
             )
-            emp_src = MatArray(fwf_path, "EmPgcm")
-        emp_src = _wrap_ongrid_array(emp_src, self.domain._grid_file, times=times)
-        self.emp = self.domain.T.array(
-            name="emp", units="m s-1", long_name="evaporation minus precipitation"
-        )
-        _set(self.emp, emp_src)
+            pe_src = -MatArray(fwf_path, "EmPgcm")
+        pe_src = _wrap_ongrid_array(pe_src, self.domain._grid_file, times=times)
+        _set(self.pe, pe_src)
