@@ -30,7 +30,7 @@ class MatArray(pygetm.input.LazyArray):
             vardict = self.file = h5py.File(path)
         except Exception:
             # Now try older MATLAB formats
-            vardict = scipy.io.loadmat(path)
+            vardict = scipy.io.loadmat(path, variable_names=(name,))
             transpose = True
 
         if name not in vardict:
@@ -356,7 +356,7 @@ class TransportMatrix(pygetm.input.LazyArray):
                 dtype = group["data"].dtype
         except OSError:
             # MATLAB < 7.3 format
-            vardict = scipy.io.loadmat(fn)
+            vardict = scipy.io.loadmat(fn, variable_names=(self._group_name,))
             A = vardict[self._group_name]
             A_ir = A.indices
             A_jc = A.indptr
@@ -406,7 +406,7 @@ class TransportMatrix(pygetm.input.LazyArray):
                 data = np.asarray(ds[self._group_name]["data"])
         except OSError:
             # MATLAB < 7.3 format
-            vardict = scipy.io.loadmat(fn)
+            vardict = scipy.io.loadmat(fn, variable_names=(self._group_name,))
             data = vardict[self._group_name].data
         return data[self.index_map]
 
@@ -460,7 +460,10 @@ def _read_config(fn: str) -> Mapping[str, Any]:
 
 
 def _load_mat(
-    fn: str, *names: str, dtype: Optional[npt.DTypeLike] = None
+    fn: str,
+    *names: str,
+    dtype: Optional[npt.DTypeLike] = None,
+    slc: Tuple = (Ellipsis,),
 ) -> Union[np.ndarray, Tuple[np.ndarray]]:
     if not os.path.isfile(fn):
         raise Exception(f"File {fn} does not exist")
@@ -470,17 +473,18 @@ def _load_mat(
         # MATLAB >= 7.3 format (HDF5)
         with h5py.File(fn) as ds:
             for name in names:
-                values.append(np.asarray(ds[name], dtype=dtype))
+                values.append(np.asarray(ds[name][slc], dtype=dtype))
     except OSError:
         # MATLAB < 7.3 format
-        name2values = scipy.io.loadmat(fn)
+        name2values = scipy.io.loadmat(fn, variable_names=names)
         for name in names:
-            values.append(name2values[name])
+            values.append(name2values[name].T[slc])
 
     def _process(data):
         while data.ndim and data.shape[0] == 1:
             data = data[0, ...]
         return data
+
     values = [_process(v) for v in values]
 
     return values[0] if len(names) == 1 else tuple(values)
@@ -984,7 +988,7 @@ class Simulator(simulator.Simulator):
             )
             assert np.ndim(tau) == 0
             Srelax_src = MatArray(fwf_path, "Srelaxgcm")
-            dz = _load_mat(self.domain._grid_file, "dz")
+            dz = _load_mat(self.domain._grid_file, "dz", slc=(0, Ellipsis))
             salt_sf_src = pygetm.input.Slice(
                 pygetm.input._as_lazyarray(salt_src),
                 shape=Srelax_src.shape,
@@ -999,11 +1003,19 @@ class Simulator(simulator.Simulator):
             # Multiply with top layer thickness dz to obtain a surface flux (# m-2 s-1)
             # This must equal the virtual salt flux of -S * pe
             # Thus, pe = (1 - S_relax / S) * dz / tau
-            pe_src = (1.0 - Srelax_src / salt_sf_src) * (dz[0, ...] / tau)
+            pe_src = (1.0 - Srelax_src / salt_sf_src) * (dz / tau)
         else:
             self.logger.info(
                 "Using net freshwater flux from original hydrodynamic simulation"
             )
             pe_src = -MatArray(fwf_path, "EmPgcm")
+        da = _load_mat(self.domain._grid_file, "da", slc=(0, Ellipsis))
+        intpe = (np.mean(pe_src, axis=0) * da).sum(where=da != 0.0)
+        offset = -intpe / da.sum()
+        self.logger.info(
+            f"Adjusting net freshwater flux by {offset:.4} m s-1 to close"
+            f" global freshwater budget"
+        )
+        pe_src = pe_src + offset
         pe_src = _wrap_ongrid_array(pe_src, self.domain._grid_file, times=times)
         _set(self.pe, pe_src)
