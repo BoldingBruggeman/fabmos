@@ -113,6 +113,12 @@ class Simulator:
             for tracer in self.tracers:
                 if not tracer.precipitation_follows_target_cell:
                     self.tracers_with_virtual_flux.append(tracer)
+        if self.tracers_with_virtual_flux:
+            self.logger.info(
+                f"Virtual flux due to net freshwater flux will be applied to"
+                f" {', '.join([t.name for t in self.tracers_with_virtual_flux])}")
+        else:
+            self.logger.info("Virtual tracer flux due to net freshwater flux not used")
 
         self.time = pygetm.simulation.to_cftime(time)
         self.logger.info(f"Starting simulation at {self.time}")
