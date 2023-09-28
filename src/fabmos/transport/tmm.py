@@ -21,6 +21,8 @@ from .. import simulator, environment, Array
 from mpi4py import MPI
 import mpi4py.util.dtlib
 
+pygetm.input.TemporalInterpolation.MAX_CACHE_SIZE = 1024
+
 
 class MatArray(pygetm.input.LazyArray):
     def __init__(self, path: str, name: str):
@@ -189,8 +191,6 @@ class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
 
 
 class TransportMatrix(pygetm.input.LazyArray):
-    MAX_CACHE_SIZE = 1024**3
-
     def __init__(
         self,
         file_list: list,
@@ -246,9 +246,9 @@ class TransportMatrix(pygetm.input.LazyArray):
             self.indptr, self.indices - istartrow
         )
 
-        self._power = 1
-        self._scale_factor = 1.0
-        self._add_identity = False
+        self.power = 1
+        self.scale_factor = 1.0
+        self.add_identity = False
 
         if localize:
             assert ((self.indices >= istartrow) & (self.indices < istoprow)).all()
@@ -257,79 +257,32 @@ class TransportMatrix(pygetm.input.LazyArray):
         else:
             self.dense_shape = (counts[rank], counts.sum())
 
-        nbytes = float(max(self._counts)) * dtype.itemsize * len(file_list)
-        self._cache = {}
-        self._use_cache = nbytes < self.MAX_CACHE_SIZE and len(file_list) > 1
-        if self._use_cache:
-            logger.info(
-                f"All {len(file_list)} {name} arrays will be cached in memory."
-                f" This requires {nbytes / 1024**3:.3} GB, which is less than the"
-                f" maximum allowed cache size of {self.MAX_CACHE_SIZE / 1024**3} GB"
-            )
-        elif len(file_list) > 1:
-            logger.info(
-                f"Not caching {name} arrays because this would require"
-                f" {nbytes / 1024**3:.3} GB, which is more than the maximum allowed"
-                f" cache size of {self.MAX_CACHE_SIZE / 1024**3} GB"
-            )
-
         shape = (self.indices.size,)
         if len(file_list) > 1:
             shape = (len(file_list),) + shape
         super().__init__(shape, dtype.newbyteorder("="), name)
 
-    @property
-    def power(self) -> int:
-        return self._power
-
-    @power.setter
-    def power(self, value: int):
-        self._cache.clear()
-        self._power = value
-
-    @property
-    def scale_factor(self) -> float:
-        return self._scale_factor
-
-    @scale_factor.setter
-    def scale_factor(self, value: float):
-        self._cache.clear()
-        self._scale_factor = value
-
-    @property
-    def add_identity(self) -> bool:
-        return self._add_identity
-
-    @add_identity.setter
-    def add_identity(self, value: bool):
-        self._cache.clear()
-        self._add_identity = value
-
     def __getitem__(self, slices) -> np.ndarray:
         itime = 0 if len(self._file_list) == 1 else slices[0]
         assert isinstance(itime, (int, np.integer))
-        if itime in self._cache:
-            return self._cache[itime][slices[-1]]
         if self._rank == 0:
             d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
         self._comm.Scatterv([d, self._counts, self._offsets, MPI.DOUBLE], values)
-        if self._scale_factor != 1.0:
-            values *= self._scale_factor
-        if self._add_identity:
+        if self.scale_factor != 1.0:
+            values *= self.scale_factor
+        if self.add_identity:
             values[self.diag_indices] += 1.0
-        if self._power != 1:
+        if self.power != 1:
             # Matrix power for local block (current subdomain only)
             csr = self.create_sparse_array(values, scipy.sparse.csr_matrix)
-            csr2 = csr**self._power
+            csr2 = csr**self.power
             csr2.sort_indices()
             assert (csr.indices == csr2.indices).all()
             assert (csr.indptr == csr2.indptr).all()
             values = csr2.data
-        if self._use_cache:
-            self._cache[itime] = values
         return values[slices[-1]]
 
     def __array__(self, dtype=None) -> np.ndarray:
@@ -733,18 +686,28 @@ class Simulator(simulator.Simulator):
         self.Aexp = self.Aexp_src.create_sparse_array()
         self.Aimp = self.Aimp_src.create_sparse_array()
         if self.Aexp_src.ndim == 2:
-            Aexp_tip = pygetm.input.TemporalInterpolation(
-                self.Aexp_src, 0, matrix_times, climatology=True
+            self.Aexp_tip = pygetm.input.TemporalInterpolation(
+                self.Aexp_src,
+                0,
+                matrix_times,
+                climatology=True,
+                comm=domain.tiling.comm,
+                logger=self.tmm_logger,
             )
             self.input_manager._all_fields.append(
-                (Aexp_tip.name, Aexp_tip, self.Aexp.data)
+                (self.Aexp_tip.name, self.Aexp_tip, self.Aexp.data)
             )
         if self.Aimp_src.ndim == 2:
-            Aimp_tip = pygetm.input.TemporalInterpolation(
-                self.Aimp_src, 0, matrix_times, climatology=True
+            self.Aimp_tip = pygetm.input.TemporalInterpolation(
+                self.Aimp_src,
+                0,
+                matrix_times,
+                climatology=True,
+                comm=domain.tiling.comm,
+                logger=self.tmm_logger,
             )
             self.input_manager._all_fields.append(
-                (Aimp_tip.name, Aimp_tip, self.Aimp.data)
+                (self.Aimp_tip.name, self.Aimp_tip, self.Aimp.data)
             )
 
         self.load_environment(periodic_forcing, calendar)
@@ -811,8 +774,12 @@ class Simulator(simulator.Simulator):
         self.Aimp_src.power = int(round(nphys))
         if self.Aexp_src.ndim == 1:
             self.Aexp.data[:] = self.Aexp_src
+        else:
+            self.Aexp_tip._cache.clear()
         if self.Aimp_src.ndim == 1:
             self.Aimp.data[:] = self.Aimp_src
+        else:
+            self.Aimp_tip._cache.clear()
 
         super().start(
             time, timestep, transport_timestep, report, report_totals, profile
@@ -843,16 +810,6 @@ class Simulator(simulator.Simulator):
                 f"Flux redistribution: {info[1].name} will be updated "
                 f"every {info[-1]} steps."
             )
-
-    def _preload_transport_matrices(self):
-        if self.Aexp_src.ndim == 2 and self.Aexp_src._use_cache:
-            self.tmm_logger.info("Preloading all explicit matrices")
-            for itime in range(self.Aexp_src.shape[0]):
-                self.Aexp_src[itime, :]
-        if self.Aimp_src.ndim == 2 and self.Aexp_src._use_cache:
-            self.tmm_logger.info("Preloading all implicit matrices")
-            for itime in range(self.Aimp_src.shape[0]):
-                self.Aimp_src[itime, self.domain.tmm_slice]
 
     def advance_fabm(self, timestep: float):
         for source, target, cum_source, w, _, freq in self._redistribute:
