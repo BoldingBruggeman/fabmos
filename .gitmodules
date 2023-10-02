@@ -11,3 +11,6 @@
 	path = extern/bfm
 	url = ../../inogs/bfmforfabm.git
 	branch = dev_monospectral
+[submodule "extern/pisces"]
+	path = extern/pisces
+	url = ../fabm-pisces.git
