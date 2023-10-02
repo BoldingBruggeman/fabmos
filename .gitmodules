@@ -7,3 +7,7 @@
 [submodule "extern/ersem"]
 	path = extern/ersem
 	url = ../../pmlmodelling/ersem.git
+[submodule "extern/bfm"]
+	path = extern/bfm
+	url = ../../inogs/bfmforfabm.git
+	branch = dev_monospectral
