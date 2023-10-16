@@ -1,16 +1,7 @@
-[submodule "extern/fabm"]
-	path = extern/fabm
-	url = ../../fabm-model/fabm.git
-[submodule "extern/fabm-mops"]
-	path = extern/fabm-mops
-	url = ../fabm-mops.git
-[submodule "extern/ersem"]
-	path = extern/ersem
-	url = ../../pmlmodelling/ersem.git
 [submodule "extern/bfm"]
 	path = extern/bfm
 	url = ../../inogs/bfmforfabm.git
 	branch = dev_monospectral
-[submodule "extern/pisces"]
-	path = extern/pisces
-	url = ../fabm-pisces.git
+[submodule "extern/fabm"]
+	path = extern/fabm
+	url = ../../fabm-model/fabm-plus.git
