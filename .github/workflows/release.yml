@@ -28,6 +28,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}
         run: |
+          git archive -o simple-archive.zip "$tag" .git_archival.txt
+          unzip -o simple-archive.zip
+          rm simple-archive.zip
           git-archive-all --prefix=${GITHUB_REPOSITORY#*/}-${tag#v} ${GITHUB_REPOSITORY#*/}.tar.gz
           git-archive-all --prefix=${GITHUB_REPOSITORY#*/}-${tag#v} ${GITHUB_REPOSITORY#*/}.zip
           gh release upload "$tag" ${GITHUB_REPOSITORY#*/}.tar.gz#"Source code including submodules (tar.gz)"
