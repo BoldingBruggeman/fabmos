@@ -28,7 +28,6 @@ classifiers = [
 #packages = ["fabmos"]
 
 [tool.setuptools_scm]
-write_to = "src/fabmos/_version.py"
-#local_scheme = "no-local-version"
+version_file = "src/fabmos/_version.py"
+version_scheme = "post-release"
 local_scheme = "dirty-tag"
-fallback_version="0.0.1"
