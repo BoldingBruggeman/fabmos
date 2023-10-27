@@ -1,0 +1,40 @@
+{% set version = "0.1.2" %}
+package:
+  name: fabmos
+  version: {{ version }}
+
+source:
+  - url: https://github.com/BoldingBruggeman/fabmos/releases/download/v{{ version }}/fabmos.tar.gz
+
+build:
+  script:
+    {{ PYTHON }} -m pip install . -vv
+
+requirements:
+  host:
+    - python
+    - pip
+    - setuptools_scm
+  build:
+    - cmake
+    - make                       # [not win]
+    - {{ compiler('c') }}        # [win]   needed to find MSVC
+    - {{ compiler('fortran') }}  # [not win]
+  run:
+    - python
+    - xarray
+    - mpi4py
+    - netCDF4
+    - pygetm
+
+test:
+  imports:
+    - fabmos
+
+about:
+  home: https://github.com/BoldingBruggeman/fabmos
+  summary: FABM offline simulator
+  description: |
+    Offline simulator for the Framework for Aquatic Biogeochemical Models
+  license: GPL
+  dev_url: https://github.com/BoldingBruggeman/fabmos
