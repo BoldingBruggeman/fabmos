@@ -13,7 +13,7 @@ calendar = "360_day"  # any valid calendar recognized by cftime, see https://cfc
 
 script_dir = os.path.dirname(__file__)
 fabm_yaml = os.path.join(
-    script_dir, "../../extern/fabm-mops/testcases/fabm_with_runoff.yaml"
+    script_dir, "../../extern/fabm/extern/mops/testcases/fabm_with_runoff.yaml"
 )
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
