@@ -62,3 +62,28 @@ jobs:
         run: |
           cd MITgcm_2.8deg
           mpiexec -n 2 python ../fabmos/examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
+   conda:
+      runs-on: ${{ matrix.os }}
+      env:
+        RDMAV_FORK_SAFE: 1
+      defaults:
+        run:
+          shell: bash -el {0}
+      strategy:
+        fail-fast: false
+        matrix:
+          os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+          python-version: ["3.8", "3.9", "3.10", "3.11"]
+      steps:
+      - name: Clone fabmos
+        uses: actions/checkout@v4
+        with:
+           submodules: recursive
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: ${{ matrix.python-version }}
+          environment-file: environment.yml
+          activate-environment: fabmos
+      - name: Build and install
+        run: pip install . -vv

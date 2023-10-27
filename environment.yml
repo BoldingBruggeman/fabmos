@@ -1,0 +1,13 @@
+# This conda environment includes everything needed to build and use FABM-OS.
+# Note: if you are working on a HPC system, you likely want to use
+# environment-min.yml instead.
+name: fabmos
+channels:
+  - conda-forge
+  - bolding-bruggeman
+dependencies:
+  - python>=3.8
+  - cmake
+  - fortran-compiler
+  - pip
+  - pygetm
