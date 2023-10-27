@@ -11,3 +11,5 @@ dependencies:
   - fortran-compiler
   - pip
   - pygetm
+  - scipy
+  - h5py

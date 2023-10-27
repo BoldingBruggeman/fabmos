@@ -28,6 +28,8 @@ requirements:
     - mpi4py
     - netCDF4
     - pygetm
+    - scipy
+    - h5py
 
 test:
   imports:
