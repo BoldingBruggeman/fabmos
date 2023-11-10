@@ -1,4 +1,4 @@
-# This conda environment includes everything needed to build and use FABM-OS.
+# This conda environment includes everything needed to build and use FABM-OS on Windows.
 name: fabmos
 channels:
   - conda-forge
@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python>=3.8
   - cmake
-  - fortran-compiler
+  - m2w64-toolchain
   - pip
   - pygetm
   - scipy

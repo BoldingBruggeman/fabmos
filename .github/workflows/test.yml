@@ -83,7 +83,10 @@ jobs:
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
-          environment-file: environment.yml
+          environment-file: ${{ matrix.os == 'windows-latest' && 'environment-win.yml' || 'environment.yml' }}
           activate-environment: fabmos
+      - name: Customize Windows build
+        if: matrix.os == 'windows-latest'
+        run: echo 'cmake_opts=-G "MSYS Makefiles"' > setup.cfg
       - name: Build and install
         run: pip install . -vv
