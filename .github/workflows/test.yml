@@ -90,5 +90,6 @@ jobs:
         run: |
           echo '[build_ext]' > setup.cfg
           echo 'cmake_opts=-G "MSYS Makefiles"' >> setup.cfg
+          ren extern/fabm/extern/ersem extern/fabm/extern/ersem_bck
       - name: Build and install
         run: pip install . -vv
