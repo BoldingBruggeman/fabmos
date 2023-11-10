@@ -87,6 +87,8 @@ jobs:
           activate-environment: fabmos
       - name: Customize Windows build
         if: matrix.os == 'windows-latest'
-        run: echo 'cmake_opts=-G "MSYS Makefiles"' > setup.cfg
+        run: |
+          echo '[build_ext]' > setup.cfg
+          echo 'cmake_opts=-G "MSYS Makefiles"' >> setup.cfg
       - name: Build and install
         run: pip install . -vv
