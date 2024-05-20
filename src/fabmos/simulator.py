@@ -42,7 +42,10 @@ class Simulator:
         self.logger.info(f"fabmos {__version__}")
 
         self.fabm = pygetm.fabm.FABM(
-            fabm_config, libname=fabm_libname, time_varying=pygetm.TimeVarying.MICRO, squeeze=True
+            fabm_config,
+            libname=fabm_libname,
+            time_varying=pygetm.TimeVarying.MICRO,
+            squeeze=True,
         )
 
         self.domain = domain
@@ -80,17 +83,17 @@ class Simulator:
         self.use_virtual_flux = use_virtual_flux
 
         self.unmasked2d = self.domain.T.mask != 0
-        if self.unmasked2d.values.all():
-            # No masked points
-            self.unmasked2d = None
-            self.unmasked3d = None
-        elif hasattr(self.domain, "mask3d"):
-            # Some horizontal points are masked and a 3D mask is already defined
+        if hasattr(self.domain, "mask3d"):
+            self.logger.info("3D mask is explicitly defined")
             self.unmasked3d = self.domain.mask3d != 0
         else:
-            # Some horizontal points are masked and we need to infer the 3D mask from the 2D one
+            self.logger.info("3D mask is not defined; inferring from 2D mask")
             self.unmasked3d = self.domain.T.array(z=pygetm.CENTERS, dtype=bool)
             self.unmasked3d.all_values[...] = self.unmasked2d[...]
+        if self.unmasked3d.values.all():
+            self.logger.info("No masked points")
+            self.unmasked2d = None
+            self.unmasked3d = None
 
     def __getitem__(self, key: str) -> Array:
         return self.output_manager.fields[key]
@@ -129,7 +132,8 @@ class Simulator:
         if self.tracers_with_virtual_flux:
             self.logger.info(
                 f"Virtual flux due to net freshwater flux will be applied to"
-                f" {', '.join([t.name for t in self.tracers_with_virtual_flux])}")
+                f" {', '.join([t.name for t in self.tracers_with_virtual_flux])}"
+            )
         else:
             self.logger.info("Virtual tracer flux due to net freshwater flux not used")
 
