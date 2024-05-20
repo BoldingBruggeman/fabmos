@@ -4,8 +4,8 @@ from typing import Union
 import numpy as np
 import xarray as xr
 
-import pyairsea
-from pyairsea import AlbedoMethod
+import awex
+from awex import AlbedoMethod
 import pygsw
 import fabmos
 from pygetm.constants import FILL_VALUE, CENTERS
@@ -62,17 +62,17 @@ class ShortWaveRadiation:
 
         hh = time.hour + time.minute / 60.0 + time.second / 3600.0
         yday = time.timetuple().tm_yday  # 1 for all of 1 January
-        pyairsea.solar_zenith_angle(
+        awex.solar_zenith_angle(
             yday, hh, self.lon.all_values, self.lat.all_values, self.zen.all_values
         )
-        pyairsea.shortwave_radiation(
+        awex.shortwave_radiation(
             yday,
             self.zen.all_values,
             self.lat.all_values,
             self.tcc.all_values,
             self.swr.all_values,
         )
-        pyairsea.albedo_water(
+        awex.albedo_water(
             self.albedo_method, self.zen.all_values, yday, self.albedo.all_values
         )
         self.swr.all_values *= 1.0 - self.albedo.all_values
@@ -118,7 +118,15 @@ class LazyDensity(fabmos.input.Operator):
         pres = np.asarray(pres, dtype=float)
         super().__init__(salt, temp, lon, lat, pres, passthrough=True)
 
-    def apply(self, salt, temp, lon, lat, pres, dtype=None) -> np.ndarray:
+    def apply(
+        self,
+        salt: np.ndarray,
+        temp: np.ndarray,
+        lon: np.ndarray,
+        lat: np.ndarray,
+        pres: np.ndarray,
+        dtype=None,
+    ) -> np.ndarray:
         salt = np.asarray(salt, dtype=float)
         temp = np.asarray(temp, dtype=float)
         rho = np.empty_like(temp)

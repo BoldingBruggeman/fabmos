@@ -2,7 +2,7 @@ import os
 import functools
 import datetime
 import logging
-from typing import Optional, Tuple, Iterable, Union, Mapping, Any
+from typing import Optional, Tuple, Union, Mapping, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -13,8 +13,9 @@ import h5py
 
 import pygetm
 import pygetm.parallel
-from pygetm.constants import CENTERS, INTERFACES
+from pygetm.constants import CENTERS
 from .. import simulator, environment, Array
+from ..domain import CompressedToFullGrid, map_input_to_compressed_grid, _update_coordinates
 
 # Note: mpi4py components should be imported after pygetm.parallel,
 # as the latter configures mpi4py.rc
@@ -56,7 +57,11 @@ class MatArray(pygetm.input.LazyArray):
 
 
 def get_mat_array(
-    path: str, name: str, grid_file: str, times: Optional[npt.ArrayLike] = None
+    path: str,
+    name: str,
+    grid_file: str,
+    times: Optional[npt.ArrayLike] = None,
+    logger: logging.Logger = None,
 ) -> xr.DataArray:
     """This routine should ultimately read .mat files in HDF5
     as well as proprietary MATLAB formats"""
@@ -64,7 +69,7 @@ def get_mat_array(
 
 
 def _wrap_ongrid_array(
-    data: MatArray, grid_file: str, times: Optional[npt.ArrayLike] = None
+    data: npt.ArrayLike, grid_file: str, times: Optional[npt.ArrayLike] = None
 ) -> xr.DataArray:
     x, y, dz = _load_mat(grid_file, "x", "y", "dz")
     dims = ["y", "x"]
@@ -88,106 +93,6 @@ def _wrap_ongrid_array(
         coords["time"] = times
     dims = [f"dim_{i}" for i in range(data.ndim - len(dims))] + dims
     return xr.DataArray(data, coords=coords, dims=dims)
-
-
-def map_input_to_compressed_grid(
-    value: xr.DataArray,
-    global_shape: Tuple[int],
-    indices: Iterable[np.ndarray],
-) -> Optional[xr.DataArray]:
-    if value.shape[-2:] != global_shape:
-        return
-
-    region_slices = tuple([slice(ind.min(), ind.max() + 1) for ind in indices])
-    all_region_slices = (slice(None),) * (value.ndim - 2) + region_slices
-    indices = tuple([ind - ind.min() for ind in indices])
-
-    if isinstance(value, np.ndarray):
-        final_slices = (slice(None),) * (value.ndim - 2) + (np.newaxis,) + indices
-        return value[all_region_slices][final_slices]
-
-    # First select the region (x and y slice) that encompasses all points
-    # in the local subdomain
-    local_shape = value.shape[:-2] + tuple([s.stop - s.start for s in region_slices])
-    s_region = pygetm.input.Slice(
-        pygetm.input._as_lazyarray(value),
-        shape=local_shape,
-        passthrough=range(value.ndim - 2),
-    )
-    s_region._slices.append((all_region_slices, (slice(None),) * value.ndim))
-
-    # In the extracted region, index the individual points
-    local_shape = value.shape[:-2] + (1,) + indices[0].shape
-    s = pygetm.input.Slice(
-        s_region,
-        shape=local_shape,
-        passthrough=range(value.ndim - 2),
-    )
-    src_slices = (slice(None),) * (value.ndim - 2) + indices
-    tgt_slices = (slice(None),) * (value.ndim - 2) + (0, slice(None))
-    s._slices.append((src_slices, tgt_slices))
-    s.passthrough_own_slices = False
-
-    # Keep only coordinates without any horizontal coordinate dimension (x, y)
-    alldims = frozenset(value.dims[-2:])
-    coords = {}
-    for n, c in value.coords.items():
-        if not alldims.intersection(c.dims):
-            coords[n] = c
-
-    return xr.DataArray(
-        s, dims=value.dims, coords=coords, attrs=value.attrs, name=s.name
-    )
-
-
-class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
-    def __init__(
-        self,
-        source: pygetm.output.operators.Base,
-        grid: Optional[pygetm.domain.Grid],
-        mapping: np.ndarray,
-        global_array: Optional[Array] = None,
-    ):
-        self._grid = grid
-        self._slice = (mapping,)
-        shape = source.shape[:-2] + (grid.ny, grid.nx)
-        self._z = None
-        if source.ndim > 2:
-            self._z = CENTERS if source.shape[0] == grid.nz else INTERFACES
-            self._slice = (slice(None),) + self._slice
-        dims = pygetm.output.operators.grid2dims(grid, self._z)
-        expression = f"{self.__class__.__name__}({source.expression})"
-        super().__init__(source, shape=shape, dims=dims, expression=expression)
-        self.values.fill(self.fill_value)
-        self._global_values = None if global_array is None else global_array.values
-
-    def get(
-        self,
-        out: Optional[npt.ArrayLike] = None,
-        slice_spec: Tuple[int, ...] = (),
-    ) -> npt.ArrayLike:
-        compressed_values = self._source.get()
-        if self._global_values is not None:
-            if out is None:
-                return self._global_values
-            else:
-                out[slice_spec] = self._global_values
-                return out[slice_spec]
-        self.values[self._slice] = compressed_values[..., 0, :]
-        return super().get(out, slice_spec)
-
-    @property
-    def grid(self) -> pygetm.domain.Grid:
-        return self._grid
-
-    @property
-    def coords(self):
-        global_x = self._grid.lon if self._grid.domain.spherical else self._grid.x
-        global_y = self._grid.lat if self._grid.domain.spherical else self._grid.y
-        global_z = self._grid.zc if self._z == CENTERS else self._grid.zf
-        globals_arrays = (global_x, global_y, global_z)
-        for c, g in zip(self._source.coords, globals_arrays):
-            yield CompressedToFullGrid(c, self._grid, self._slice[-1], g)
 
 
 class TransportMatrix(pygetm.input.LazyArray):
@@ -483,6 +388,8 @@ def create_domain(
         spherical=True,
         tiling=tiling,
         logger=logger,
+        halox=0,
+        haloy=0
     )
 
     slc_loc, slc_glob, shape_loc, _ = domain.tiling.subdomain2slices()
@@ -543,9 +450,11 @@ def create_domain(
             spherical=True,
             tiling=tiling,
             logger=domain.root_logger,
+            halox=0,
+            haloy=0
         )
         full_domain.initialize(pygetm.BAROCLINIC)
-        _update_coordinates(full_domain.T, dz, da[0, ...])
+        _update_coordinates(full_domain.T, da[0, ...], dz)
 
         # By default, transform compressed fields to original 3D domain on output
         tf = functools.partial(
@@ -571,30 +480,6 @@ def create_domain(
         assert v_diff.min() == 0 and v_diff.max() == 1
 
     return domain
-
-
-def _update_coordinates(grid: pygetm.domain.Grid, dz: np.ndarray, da: np.ndarray):
-    slc_loc, slc_glob, _, _ = grid.domain.tiling.subdomain2slices()
-    grid.ho.values[slc_loc] = dz[slc_glob]
-    grid.hn.values[slc_loc] = dz[slc_glob]
-    grid.zf.all_values.fill(0.0)
-    grid.zf.all_values[1:, ...] = -grid.hn.all_values.cumsum(axis=0)
-    grid.zc.all_values[...] = 0.5 * (
-        grid.zf.all_values[:-1, :, :] + grid.zf.all_values[1:, :, :]
-    )
-    grid.zc.all_values[:, grid._land] = 0.0
-    grid.zf.all_values[:, grid._land] = 0.0
-    grid.domain.depth.all_values[...] = -grid.zc.all_values
-    grid.ho.all_values[grid.ho.all_values == 0.0] = grid.ho.fill_value
-    grid.hn.all_values[grid.hn.all_values == 0.0] = grid.hn.fill_value
-    grid.ho.attrs["_time_varying"] = False
-    grid.hn.attrs["_time_varying"] = False
-    grid.zc.attrs["_time_varying"] = False
-    grid.zf.attrs["_time_varying"] = False
-    grid.domain.depth.attrs["_time_varying"] = False
-
-    grid.area.values[slc_loc] = da[slc_glob]
-    grid.D.values[slc_loc] = grid.H.values[slc_loc]
 
 
 def climatology_times(calendar="standard"):
@@ -629,9 +514,9 @@ class Simulator(simulator.Simulator):
         )
 
         self.tmm_logger = self.logger.getChild("TMM")
-        _update_coordinates(self.domain.T, self.domain.dz, self.domain.da)
+        _update_coordinates(self.domain.T, self.domain.da, self.domain.dz)
         if self.domain.glob and self.domain.glob is not self.domain:
-            _update_coordinates(self.domain.glob.T, self.domain.dz, self.domain.da)
+            _update_coordinates(self.domain.glob.T, self.domain.da, self.domain.dz)
 
         root = os.path.dirname(self.domain._grid_file)
         config = _read_config(os.path.join(root, "config_data.mat"))
@@ -938,6 +823,8 @@ class Simulator(simulator.Simulator):
 
         fwf_path = os.path.join(root, "GCM/FreshWaterForcing_gcm.mat")
         tau = _load_mat(fwf_path, "saltRelaxTimegcm")
+        da = _load_mat(self.domain._grid_file, "da", slc=(0, Ellipsis))
+        unmasked = da != 0.0
         if np.any(tau):
             self.logger.info(
                 "Reconstructing net freshwater flux from salinity relaxation"
@@ -966,9 +853,8 @@ class Simulator(simulator.Simulator):
                 "Using net freshwater flux from original hydrodynamic simulation"
             )
             pe_src = -MatArray(fwf_path, "EmPgcm")
-        da = _load_mat(self.domain._grid_file, "da", slc=(0, Ellipsis))
-        intpe = (np.mean(pe_src, axis=0) * da).sum(where=da != 0.0)
-        offset = -intpe / da.sum()
+        intpe = (np.mean(np.asarray(pe_src), axis=0) * da).sum(where=unmasked)
+        offset = np.array(-intpe / da.sum())
         self.logger.info(
             f"Adjusting net freshwater flux by {offset:.4} m s-1 to close"
             f" global freshwater budget"
