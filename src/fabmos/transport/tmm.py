@@ -2,7 +2,7 @@ import os
 import functools
 import datetime
 import logging
-from typing import Optional, Tuple, Union, Mapping, Any
+from typing import Optional, Tuple, Union, Mapping, Any, List
 
 import numpy as np
 import numpy.typing as npt
@@ -15,7 +15,11 @@ import pygetm
 import pygetm.parallel
 from pygetm.constants import CENTERS
 from .. import simulator, environment, Array
-from ..domain import CompressedToFullGrid, map_input_to_compressed_grid, _update_coordinates
+from ..domain import (
+    CompressedToFullGrid,
+    map_input_to_compressed_grid,
+    _update_coordinates,
+)
 
 # Note: mpi4py components should be imported after pygetm.parallel,
 # as the latter configures mpi4py.rc
@@ -23,6 +27,10 @@ from mpi4py import MPI
 import mpi4py.util.dtlib
 
 pygetm.input.TemporalInterpolation.MAX_CACHE_SIZE = 1024
+
+# moles of gas in atmosphere = atmospheric mass (kg) divided
+# by molecular weight of dry air (kg/mol)
+ATMOSPHERIC_GAS_CONTENT = 5.15e18 / 28.93e-3
 
 
 class MatArray(pygetm.input.LazyArray):
@@ -389,7 +397,7 @@ def create_domain(
         tiling=tiling,
         logger=logger,
         halox=0,
-        haloy=0
+        haloy=0,
     )
 
     slc_loc, slc_glob, shape_loc, _ = domain.tiling.subdomain2slices()
@@ -451,7 +459,7 @@ def create_domain(
             tiling=tiling,
             logger=domain.root_logger,
             halox=0,
-            haloy=0
+            haloy=0,
         )
         full_domain.initialize(pygetm.BAROCLINIC)
         _update_coordinates(full_domain.T, da[0, ...], dz)
@@ -596,11 +604,32 @@ class Simulator(simulator.Simulator):
             )
 
         self.load_environment(periodic_forcing, calendar)
-        self._redistribute: Tuple[
-            Array, Array, Array, Optional[Array], Union[datetime.timedelta, int], int
+        self._redistribute: List[
+            Tuple[
+                Array,
+                Array,
+                Array,
+                Optional[Array],
+                Union[datetime.timedelta, int],
+                int,
+            ]
         ] = []
+        self._atmospheric_gases: List[Tuple[Array, Array, float, float]] = []
 
         self.tot_area = domain.T.area.global_sum(where=domain.T.mask == 1, to_all=True)
+
+    def _get_existing_fabm_variable(self, name: str) -> Array:
+        for v, array in self.fabm._variable2array.items():
+            if v.name == name:
+                break
+        else:
+            names = [v.name for v in self.fabm._variable2array]
+            raise Exception(
+                f"Variable {name} not found in FABM model."
+                f" Available: {', '.join(names)}"
+            )
+        array.saved = True
+        return array
 
     def request_redistribution(
         self,
@@ -610,16 +639,7 @@ class Simulator(simulator.Simulator):
         update_interval: Union[datetime.timedelta, int],
         initial_value: float = 0.0,
     ):
-        for v, source_array in self.fabm._variable2array.items():
-            if v.name == source:
-                break
-        else:
-            names = [v.name for v in self.fabm._variable2array]
-            raise Exception(
-                f"Variable {source} not found in FABM model."
-                f" Available: {', '.join(names)}"
-            )
-        source_array.saved = True
+        source_array = self._get_existing_fabm_variable(source)
         target_array = self.fabm.get_dependency(target)
         target_array.fill(initial_value)
         cum_source = source_array.grid.array(fill=0.0)
@@ -627,6 +647,29 @@ class Simulator(simulator.Simulator):
         self._redistribute.append(
             [source_array, target_array, cum_source, weights, update_interval, iupdate]
         )
+
+    def add_atmospheric_gas(
+        self,
+        atmospheric_name: str,
+        underwater_name: str,
+        atmospheric_scale_factor: float = 1e-6,
+        underwater_scale_factor: float = 1.0,
+    ) -> Array:
+        atm_array = self.fabm.get_dependency(atmospheric_name)
+        flux_array = self._get_existing_fabm_variable(underwater_name + "_sfl")
+        self.logger.info(
+            f"Atmopsheric gas: {atm_array.name} will be updated"
+            f" based on air-sea flux of {underwater_name}."
+        )
+        self._atmospheric_gases.append(
+            [
+                atm_array,
+                flux_array,
+                atmospheric_scale_factor,
+                underwater_scale_factor,
+            ]
+        )
+        return atm_array
 
     def start(
         self,
@@ -722,6 +765,19 @@ class Simulator(simulator.Simulator):
                     )
                 target.fill(values)
                 cum_source.all_values.fill(0.0)
+
+        for atm_array, flux_array, atm_scale, wat_scale in self._atmospheric_gases:
+            unmasked = flux_array.grid.mask == 1
+            flux_area = flux_array * flux_array.grid.area
+            int_flux = flux_area.global_sum(where=unmasked, to_all=True)
+            content = atm_array.values[0, 0] * atm_scale * ATMOSPHERIC_GAS_CONTENT
+            content -= int_flux * wat_scale * timestep
+            volume_fraction = content / (atm_scale * ATMOSPHERIC_GAS_CONTENT)
+            self.logger.debug(
+                f"  integrated flux of {atm_array.name} = {int_flux} mol/s."
+                f" Updated volume fraction = {volume_fraction}"
+            )
+            atm_array.fill(volume_fraction)
 
         return super().advance_fabm(timestep)
 
