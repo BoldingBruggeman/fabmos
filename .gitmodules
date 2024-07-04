@@ -1,7 +1,3 @@
-[submodule "extern/bfm"]
-	path = extern/bfm
-	url = ../../inogs/bfmforfabm.git
-	branch = dev_monospectral
 [submodule "extern/fabm"]
 	path = extern/fabm
 	url = ../../fabm-model/fabm-plus.git
