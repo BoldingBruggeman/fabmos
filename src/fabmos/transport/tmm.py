@@ -179,7 +179,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         itime = 0 if len(self._file_list) == 1 else slices[0]
         assert isinstance(itime, (int, np.integer))
         if self._rank == 0:
-            d = self._get_matrix_data(self._file_list[itime]).newbyteorder("=")
+            d = self._get_matrix_data(self._file_list[itime]).view(self.dtype)
         else:
             d = None
         values = np.empty((self.shape[-1],), self.dtype)
