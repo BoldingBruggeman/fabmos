@@ -6,7 +6,7 @@ import xarray as xr
 
 import awex
 from awex import AlbedoMethod
-import pygsw
+from pygetm import pygsw
 import fabmos
 from pygetm.constants import FILL_VALUE, CENTERS
 
