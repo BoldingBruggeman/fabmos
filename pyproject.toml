@@ -9,7 +9,7 @@ authors = [
   {name = "Jorn Bruggeman", email = "jorn@bolding-bruggeman.com"}
 ]
 description = "Offline simulator for FABM"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies = [
   "pygetm"
 ]
