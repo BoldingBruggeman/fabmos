@@ -26,7 +26,7 @@ jobs:
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
-          environment-file: environment-min.yml
+          environment-file: environment.yml
           activate-environment: fabmos
       - name: Compile and install fabmos
         run: |
