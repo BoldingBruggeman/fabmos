@@ -15,41 +15,22 @@ jobs:
       strategy:
         fail-fast: false
         matrix:
-          os: ["ubuntu-latest"] #, "macos-latest", "windows-latest"]
+          os: ["ubuntu-latest", "macos-latest"] #, "windows-latest"]
           python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
       steps:
-      - name: Install dependencies
-        run: sudo apt-get install mpich
-      - name: Clone pygetm
-        uses: actions/checkout@v4
-        with:
-           repository: BoldingBruggeman/getm-rewrite
-           submodules: recursive
-           path: getm-rewrite
       - name: Clone fabmos
         uses: actions/checkout@v4
         with:
            submodules: recursive
-           path: fabmos
       - uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
-          environment-file: getm-rewrite/environment-min.yml
-          activate-environment: pygetm
-      - name: Compile and install pygetm
-        run: |
-          cd getm-rewrite
-          source ./install
-      - name: Compile and install pyfabm
-        run: |
-          pip install -vv ./fabmos/extern/fabm
+          environment-file: environment-min.yml
+          activate-environment: fabmos
       - name: Compile and install fabmos
         run: |
-          pip install -vv ./fabmos
-      - name: Install fabmos dependencies
-        run: |
-          conda install -c conda-forge h5py
+          pip install -v .
       - name: Download and extract TMM setup
         run: |
           wget -q http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar
@@ -57,11 +38,11 @@ jobs:
       - name: Run TMM setup in serial
         run: |
           cd MITgcm_2.8deg
-          python ../fabmos/examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
+          python ../examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
       - name: Run TMM setup in parallel
         run: |
           cd MITgcm_2.8deg
-          mpiexec -n 2 python ../fabmos/examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
+          mpiexec -n 2 python ../examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
    conda:
       runs-on: ${{ matrix.os }}
       env:
