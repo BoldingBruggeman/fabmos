@@ -72,5 +72,6 @@ jobs:
           echo '[build_ext]' > setup.cfg
           echo 'cmake_opts=-G "MSYS Makefiles"' >> setup.cfg
           mv extern/fabm/extern/ersem extern/fabm/extern/ersem_bck
+          mv extern/fabm/extern/ogs extern/fabm/extern/ogs_bck
       - name: Build and install
         run: pip install . -vv
