@@ -28,6 +28,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           environment-file: ${{ matrix.os == 'windows-latest' && 'environment-win.yml' || 'environment.yml' }}
           activate-environment: fabmos
+      - name: List installed conda packages
+        run: conda export
       - name: Customize Windows build
         if: matrix.os == 'windows-latest'
         run: |
