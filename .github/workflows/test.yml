@@ -41,7 +41,7 @@ jobs:
       - name: Download and extract TMM setup
         run: |
           curl -s http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar -o MITgcm_2.8deg.tar
-          tar -xvf MITgcm_2.8deg.tar
+          tar -xvf MITgcm_2.8deg.tar --exclude "MITgcm_2.8deg/GCM/basepath.mat" --exclude "MITgcm_2.8deg/BiogeochemData/basepath.mat"
       - name: Run TMM setup in serial
         run: |
           cd MITgcm_2.8deg
