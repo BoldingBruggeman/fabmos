@@ -9,6 +9,7 @@ jobs:
       runs-on: ${{ matrix.os }}
       env:
         RDMAV_FORK_SAFE: 1
+        CMAKE_BUILD_PARALLEL_LEVEL: 2
       defaults:
         run:
           shell: bash -el {0}
@@ -56,5 +57,5 @@ jobs:
           cd MITgcm_2.8deg
           mpiexec -n 2 python ../examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
         env:
-          I_MPI_FABRICS: shm:ofi
+          I_MPI_FABRICS: shm #:ofi
           FI_PROVIDER: tcp
