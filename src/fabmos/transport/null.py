@@ -1,10 +1,9 @@
-
 from typing import Optional
 import os
 
 import pygetm
 from .. import simulator
-from ..domain import compress, _update_coordinates
+from ..domain import compress, _update_coordinates, drop_grids
 
 
 class Simulator(simulator.Simulator):
@@ -17,6 +16,21 @@ class Simulator(simulator.Simulator):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_hz_only")
 
         domain = compress(domain)
+
+        # Drop unused domain variables. Some of these will be NaN,
+        # which causes check_finite to fail.
+        drop_grids(
+            domain,
+            domain.U,
+            domain.V,
+            domain.X,
+            domain.UU,
+            domain.UV,
+            domain.VU,
+            domain.VV,
+        )
+        for name in ("dxt", "dyt", "idxt", "idyt"):
+            del domain.fields[name]
 
         super().__init__(
             domain,

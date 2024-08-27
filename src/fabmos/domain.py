@@ -146,6 +146,7 @@ def _update_coordinates(grid: pygetm.domain.Grid, area: np.ndarray, h: Optional[
     grid.domain.depth.attrs["_time_varying"] = False
 
     grid.area.values[slc_loc] = area[slc_glob]
+    grid.iarea.values[slc_loc] = 1.0 / grid.area.values[slc_loc]
     grid.D.values[slc_loc] = grid.H.values[slc_loc]
 
 
@@ -189,8 +190,8 @@ def compress(full_domain: Optional[Domain], comm: Optional[MPI.Comm] = None) -> 
         spherical=full_domain.spherical,
         tiling=tiling,
         logger=full_domain.root_logger,
-        halox=full_domain.halox,
-        haloy=full_domain.haloy
+        halox=0,
+        haloy=0
     )
 
     slc_loc, slc_glob, _, _ = domain.tiling.subdomain2slices()
@@ -213,3 +214,9 @@ def compress(full_domain: Optional[Domain], comm: Optional[MPI.Comm] = None) -> 
     domain.uncompressed_area = area
 
     return domain
+
+
+def drop_grids(domain: Domain, *grids: Grid):
+    for name in list(domain.fields):
+        if domain.fields[name].grid in grids:
+            del domain.fields[name]

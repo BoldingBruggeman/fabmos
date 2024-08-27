@@ -19,6 +19,7 @@ from ..domain import (
     CompressedToFullGrid,
     map_input_to_compressed_grid,
     _update_coordinates,
+    drop_grids,
 )
 
 # Note: mpi4py components should be imported after pygetm.parallel,
@@ -521,6 +522,20 @@ class Simulator(simulator.Simulator):
             use_virtual_flux=True,
         )
 
+        # Drop unused domain variables. Some of these will be NaN, which causes check_finite to fail.
+        drop_grids(
+            domain,
+            domain.U,
+            domain.V,
+            domain.X,
+            domain.UU,
+            domain.UV,
+            domain.VU,
+            domain.VV,
+        )
+        for name in ("dxt", "dyt", "idxt", "idyt"):
+            del domain.fields[name]
+
         self.tmm_logger = self.logger.getChild("TMM")
         _update_coordinates(self.domain.T, self.domain.da, self.domain.dz)
         if self.domain.glob and self.domain.glob is not self.domain:
@@ -656,9 +671,10 @@ class Simulator(simulator.Simulator):
         underwater_scale_factor: float = 1.0,
     ) -> Array:
         atm_array = self.fabm.get_dependency(atmospheric_name)
+        atm_array.attrs["_part_of_state"] = True
         flux_array = self._get_existing_fabm_variable(underwater_name + "_sfl")
         self.logger.info(
-            f"Atmopsheric gas: {atm_array.name} will be updated"
+            f"Atmospheric gas: {atm_array.name} will be updated"
             f" based on air-sea flux of {underwater_name}."
         )
         self._atmospheric_gases.append(

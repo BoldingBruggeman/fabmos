@@ -10,24 +10,8 @@ import pygetm
 from . import environment, Array, __version__
 
 
-def log_exceptions(method):
-    @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
-        try:
-            return method(self, *args, **kwargs)
-        except Exception as e:
-            logger = getattr(self, "logger", None)
-            domain = getattr(self, "domain", None)
-            if logger is None or domain is None or domain.tiling.n == 1:
-                raise
-            logger.exception(str(e), stack_info=True, stacklevel=3)
-            domain.tiling.comm.Abort(1)
-
-    return wrapper
-
-
-class Simulator:
-    @log_exceptions
+class Simulator(pygetm.simulation.BaseSimulation):
+    @pygetm.simulation.log_exceptions
     def __init__(
         self,
         domain: pygetm.domain.Domain,
@@ -36,9 +20,8 @@ class Simulator:
         log_level: Optional[int] = None,
         use_virtual_flux: bool = False,
     ):
-        self.logger = domain.root_logger
-        if log_level is not None:
-            self.logger.setLevel(log_level)
+        super().__init__(domain, log_level=log_level)
+
         self.logger.info(f"fabmos {__version__}")
 
         self.fabm = pygetm.fabm.FABM(
@@ -47,17 +30,6 @@ class Simulator:
             time_varying=pygetm.TimeVarying.MICRO,
             squeeze=True,
         )
-
-        self.domain = domain
-
-        self.output_manager = pygetm.output.OutputManager(
-            self.domain.fields,
-            rank=domain.tiling.rank,
-            logger=self.logger.getChild("output_manager"),
-        )
-
-        self.input_manager = self.domain.input_manager
-        self.input_manager.set_logger(self.logger.getChild("input_manager"))
 
         self.domain.initialize(pygetm.BAROCLINIC)
         self.domain.depth.fabm_standard_name = "pressure"
@@ -95,10 +67,7 @@ class Simulator:
             self.unmasked2d = None
             self.unmasked3d = None
 
-    def __getitem__(self, key: str) -> Array:
-        return self.output_manager.fields[key]
-
-    @log_exceptions
+    @pygetm.simulation.log_exceptions
     def start(
         self,
         time: Union[cftime.datetime, datetime.datetime],
@@ -123,7 +92,17 @@ class Simulator:
                 f"The transport timestep of {transport_timestep} s must be an"
                 f" exact multiple of the biogeochemical timestep of {timestep} s"
             )
+        self.nstep_transport = nstep_transport
+        super().start(
+            time,
+            timestep,
+            nstep_transport,
+            report=report,
+            report_totals=report_totals,
+            profile=profile,
+        )
 
+    def _start(self):
         self.tracers_with_virtual_flux: List[pygetm.tracer.Tracer] = []
         if self.use_virtual_flux:
             for tracer in self.tracers:
@@ -137,59 +116,20 @@ class Simulator:
         else:
             self.logger.info("Virtual tracer flux due to net freshwater flux not used")
 
-        self.time = pygetm.simulation.to_cftime(time)
-        self.logger.info(f"Starting simulation at {self.time}")
-        self.timestep = timestep
-        self.timedelta = datetime.timedelta(seconds=timestep)
-        self.nstep_transport = nstep_transport
-        self.istep = 0
-        self.report = int(report.total_seconds() / timestep)
-        if isinstance(report_totals, datetime.timedelta):
-            report_totals = int(round(report_totals.total_seconds() / self.timestep))
-        self.report_totals = report_totals
-
         self.fabm.start(self.time)
-        self.update_diagnostics(macro=True)
-        self.output_manager.start(self.istep, self.time)
-        self._start_time = timeit.default_timer()
 
-        # Start profiling if requested
-        self._profile = None
-        if profile:
-            import cProfile
-
-            pr = cProfile.Profile()
-            self._profile = (profile, pr)
-            pr.enable()
-
-    @log_exceptions
-    def advance(self):
-        self.time += self.timedelta
-        self.istep += 1
-        apply_transport = self.istep % self.nstep_transport == 0
-        if self.report != 0 and self.istep % self.report == 0:
-            self.logger.info(self.time)
-
-        self.output_manager.prepare_save(
-            self.timestep * self.istep, self.istep, self.time, macro=apply_transport
-        )
-
+    def _advance_state(self, macro_active: bool):
         self.logger.debug(f"fabm advancing to {self.time} (dt={self.timestep} s)")
         self.advance_fabm(self.timestep)
 
-        if apply_transport:
+        if macro_active:
             timestep_transport = self.nstep_transport * self.timestep
             self.logger.debug(
                 f"transport advancing to {self.time} (dt={timestep_transport} s)"
             )
             self.transport(timestep_transport)
 
-        self.update_diagnostics(apply_transport)
-
-        self.output_manager.save(self.timestep * self.istep, self.istep, self.time)
-
-    def update_diagnostics(self, macro: bool):
-        self.input_manager.update(self.time, macro=macro)
+    def _update_forcing_and_diagnostics(self, macro_active: bool):
         self.radiation.update(self.time)
         self.fabm.update_sources(self.timestep * self.istep, self.time)
         self.fabm.add_vertical_movement_to_sources()
@@ -208,21 +148,6 @@ class Simulator:
 
     def transport(self, timestep: float):
         pass
-
-    @log_exceptions
-    def finish(self):
-        if self._profile:
-            name, pr = self._profile
-            pr.disable()
-            profile_path = f"{name}-{self.domain.tiling.rank:03}.prof"
-            self.logger.info(f"Writing profiling report to {profile_path}")
-            with open(profile_path, "w") as f:
-                ps = pstats.Stats(pr, stream=f).sort_stats(pstats.SortKey.TIME)
-                ps.print_stats()
-
-        nsecs = timeit.default_timer() - self._start_time
-        self.logger.info(f"Time spent in main loop: {nsecs:.3f} s")
-        self.output_manager.close(self.timestep * self.istep, self.time)
 
     @property
     def totals(
