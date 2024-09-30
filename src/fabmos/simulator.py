@@ -1,13 +1,14 @@
 import datetime
 from typing import List, Union, Optional, Tuple, Sequence
-import timeit
-import pstats
-import functools
+import os.path
 
 import cftime
 
 import pygetm
-from . import environment, Array, __version__
+from . import environment, __version__
+
+# Drop "t" postfix from names of T-grid-associated variables
+pygetm.domain.Grid.postfixes[pygetm._pygetm.TGRID] = ""
 
 
 class Simulator(pygetm.simulation.BaseSimulation):
@@ -15,35 +16,46 @@ class Simulator(pygetm.simulation.BaseSimulation):
     def __init__(
         self,
         domain: pygetm.domain.Domain,
-        fabm_config: str = "fabm.yaml",
-        fabm_libname: str = "fabm",
+        fabm_config: Optional[str] = "fabm.yaml",
+        fabm_libname: str = os.path.join(os.path.dirname(pygetm.fabm.__file__), "fabm"),
         log_level: Optional[int] = None,
         use_virtual_flux: bool = False,
+        squeeze: bool = True,
+        add_swr: bool = True,
+        process_vertical_movement: bool = True,
     ):
         super().__init__(domain, log_level=log_level)
 
         self.logger.info(f"fabmos {__version__}")
 
-        self.fabm = pygetm.fabm.FABM(
-            fabm_config,
-            libname=fabm_libname,
-            time_varying=pygetm.TimeVarying.MICRO,
-            squeeze=True,
-        )
+        if fabm_config is not None:
+            self.fabm = pygetm.fabm.FABM(
+                fabm_config,
+                libname=fabm_libname,
+                time_varying=pygetm.TimeVarying.MICRO,
+                squeeze=squeeze,
+            )
+        else:
+            self.fabm = None
 
         self.domain.initialize(pygetm.BAROCLINIC)
+        self.domain.T.postfix = ""
         self.domain.depth.fabm_standard_name = "pressure"
-
-        self.radiation = environment.ShortWaveRadiation(self.domain.T)
 
         self.tracers = pygetm.tracer.TracerCollection(self.domain.T)
         self.tracer_totals: List[pygetm.tracer.TracerTotal] = []
-        self.fabm.initialize(
-            self.domain.T,
-            self.tracers,
-            self.tracer_totals,
-            self.logger.getChild("FABM"),
-        )
+        self.surface_radiation = None
+        if self.fabm:
+            self.fabm.initialize(
+                self.domain.T,
+                self.tracers,
+                self.tracer_totals,
+                self.logger.getChild("FABM"),
+            )
+            if add_swr and self.fabm.has_dependency(
+                "surface_downwelling_shortwave_flux"
+            ):
+                self.surface_radiation = environment.ShortWaveRadiation(self.domain.T)
 
         if use_virtual_flux:
             self.pe = self.domain.T.array(
@@ -53,6 +65,7 @@ class Simulator(pygetm.simulation.BaseSimulation):
                 " evaporation",
             )
         self.use_virtual_flux = use_virtual_flux
+        self.process_vertical_movement = process_vertical_movement
 
         self.unmasked2d = self.domain.T.mask != 0
         if hasattr(self.domain, "mask3d"):
@@ -116,7 +129,8 @@ class Simulator(pygetm.simulation.BaseSimulation):
         else:
             self.logger.info("Virtual tracer flux due to net freshwater flux not used")
 
-        self.fabm.start(self.time)
+        if self.fabm:
+            self.fabm.start(self.time)
 
     def _advance_state(self, macro_active: bool):
         self.logger.debug(f"fabm advancing to {self.time} (dt={self.timestep} s)")
@@ -130,9 +144,12 @@ class Simulator(pygetm.simulation.BaseSimulation):
             self.transport(timestep_transport)
 
     def _update_forcing_and_diagnostics(self, macro_active: bool):
-        self.radiation.update(self.time)
-        self.fabm.update_sources(self.timestep * self.istep, self.time)
-        self.fabm.add_vertical_movement_to_sources()
+        if self.surface_radiation:
+            self.surface_radiation.update(self.time)
+        if self.fabm:
+            self.fabm.update_sources(self.timestep * self.istep, self.time)
+            if self.process_vertical_movement:
+                self.fabm.add_vertical_movement_to_sources()
 
         if self.report_totals != 0 and self.istep % self.report_totals == 0:
             self.report_domain_integrals()
@@ -144,7 +161,8 @@ class Simulator(pygetm.simulation.BaseSimulation):
             for tracer in self.tracers_with_virtual_flux:
                 tracer.values[0, :, :] *= scale
 
-        self.fabm.advance(timestep)
+        if self.fabm:
+            self.fabm.advance(timestep)
 
     def transport(self, timestep: float):
         pass

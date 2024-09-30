@@ -7,6 +7,6 @@ dependencies:
   - cmake
   - fortran-compiler
   - pip
-  - pygetm>=0.9.2
+  - pygetm>=0.9.3
   - scipy
   - h5py

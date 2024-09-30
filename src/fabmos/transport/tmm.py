@@ -533,7 +533,7 @@ class Simulator(simulator.Simulator):
             domain.VU,
             domain.VV,
         )
-        for name in ("dxt", "dyt", "idxt", "idyt"):
+        for name in ("dx", "dy", "idx", "idy"):
             del domain.fields[name]
 
         self.tmm_logger = self.logger.getChild("TMM")
