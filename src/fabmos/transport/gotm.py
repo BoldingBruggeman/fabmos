@@ -1,4 +1,5 @@
 from typing import Optional, Union, Tuple
+import os.path
 
 import numpy as np
 
@@ -220,12 +221,13 @@ class Simulator(simulator.Simulator):
         charnock_val: float = 1400.0,
         z0s_min: float = 0.02,
     ):
+        fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_gotm")
         super().__init__(
             domain,
             fabm_config,
             log_level=log_level,
             use_virtual_flux=False,
-            squeeze=False,
+            fabm_libname=fabm_libname,
             add_swr=False,
             process_vertical_movement=False,
         )
