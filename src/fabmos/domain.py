@@ -216,6 +216,10 @@ def _update_coordinates(
 
 
 def compress(full_domain: Optional[Domain], comm: Optional[MPI.Comm] = None) -> Domain:
+    """Compress domain by filtering out all land points (with mask=0).
+
+    The resulting domain will have ny=1 and nx=number of wet points.
+    """
     full_domain.initialize(pygetm.BAROCLINIC)
 
     nx, mask, lon, lat, x, y, H, area = None, None, None, None, None, None, None, None
@@ -288,9 +292,20 @@ def compress_clusters(
     comm: Optional[MPI.Comm] = None,
     decompress_output: bool = False,
 ) -> Domain:
-    full_domain.initialize(pygetm.BAROCLINIC)
+    """Compress domain by merging grid cells with the same cluster value.
 
-    # More compressed domain: simple subdomain division along x dimension
+    Grid cells that are masked in the full domain or that have a masked cluster
+    value will be excluded.
+    Coordinates per cluster (x, y, lon, lat) are taken from the grid cell in
+    the cluster that is closed to the cluster mean. Bathymetric depths will
+    equal the mean over the cluster. Surface areas will equal the sum over the
+    cluster.
+    The resulting domain will have ny=1 and nx=number of clusters.
+    """
+    clusters = np.ma.asarray(clusters)
+    assert clusters.shape == (full_domain.ny, full_domain.nx)
+
+    # For compressed domain (ny=1): simple subdomain division along x dimension
     tiling = pygetm.parallel.Tiling(nrow=1, comm=comm)
 
     to_compress = ("mask", "lon", "lat", "x", "y", "H", "area")
@@ -306,7 +321,6 @@ def compress_clusters(
             global_fields[name] = global_values
 
     unmasked = global_fields["mask"] != 0
-    clusters = np.ma.asarray(clusters)
     assert clusters.shape == unmasked.shape
     unmasked &= ~np.ma.getmaskarray(clusters)
     clusters = np.asarray(clusters)
@@ -324,7 +338,8 @@ def compress_clusters(
         for name, values in global_fields.items():
             cluster_values[name] = values[sel]
             compressed_fields[name][i] = cluster_values[name].mean()
-        compressed_fields["area"][i] = cluster_values["area"].sum()
+        area = cluster_values["area"].sum()
+        compressed_fields["area"][i] = area
 
         mean_lon = compressed_fields["lon"][i]
         mean_lat = compressed_fields["lat"][i]
@@ -335,10 +350,12 @@ def compress_clusters(
         near_lon = global_fields["lon"].flat[inear]
         near_lat = global_fields["lat"].flat[inear]
 
-        logger.info(
-            f"  {c} mean: {mean_lon:.6f} degrees East, {mean_lat:.6f} degrees North, {compressed_fields['H'][i]:.1f} m"
-        )
-        logger.info(f"  {c}: {near_lon:.6f} degrees East, {near_lat:.6f} degrees North")
+        logger.info(f"{c}:")
+        logger.info(f"  cell count: {sel.sum()}")
+        logger.info(f"  mean coordinates: {mean_lon:.6f} °East, {mean_lat:.6f} °North")
+        logger.info(f"  final coordinates: {near_lon:.6f} °East, {near_lat:.6f} °North")
+        logger.info(f"  mean depth: {compressed_fields['H'][i]:.1f} m")
+        logger.info(f"  total area: {1e-6 * area:.1f} km2")
 
     domain = pygetm.domain.create(
         unique_clusters.size,
