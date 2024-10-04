@@ -905,14 +905,7 @@ class Simulator(simulator.Simulator):
             assert np.ndim(tau) == 0
             Srelax_src = MatArray(fwf_path, "Srelaxgcm")
             dz = _load_mat(self.domain._grid_file, "dz", slc=(0, Ellipsis))
-            salt_sf_src = pygetm.input.Slice(
-                pygetm.input._as_lazyarray(salt_src),
-                shape=Srelax_src.shape,
-                passthrough={0: 0, 1: 2, 2: 3},
-            )
-            src_slice = (slice(None), 0, slice(None), slice(None))
-            tgt_slice = (slice(None), slice(None), slice(None))
-            salt_sf_src._slices.append((src_slice, tgt_slice))
+            salt_sf_src = pygetm.input.isel(salt_src, z=0)
 
             # The change in surface salinity due to relaxation is
             #   (S_relax - S) / tau (# m-3 s-1)
