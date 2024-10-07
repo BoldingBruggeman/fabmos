@@ -1,17 +1,15 @@
 # Installation
 
+To install a pre-built version from Anaconda (Linux/Mac/Windows):
+
+```
+conda install -c conda-forge -c bolding-bruggeman fabmos
+```
+
+To build from source:
+
 ```
 python -m pip install <REPODIR>
 ```
 
-To install in [editable mode](https://pip.pypa.io/en/latest/topics/local-project-installs/) (the fabmos module code is directly run from the repository directory, which makes it easy to make changes and see their impact during development, without reinstallation):
-
-```
-python -m pip install -e <REPODIR>
-```
-
-# Removal
-
-```
-python -m pip uninstall fabmos
-```
+For more information, see [the wiki](https://github.com/BoldingBruggeman/fabmos/wiki).
