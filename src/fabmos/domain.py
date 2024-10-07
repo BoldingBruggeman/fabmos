@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional, Tuple, Union
 import functools
 
 import numpy as np
@@ -15,18 +15,25 @@ from . import Array
 
 
 def map_input_to_compressed_grid(
-    value: xr.DataArray,
+    value: Union[np.ndarray, xr.DataArray],
     global_shape: Tuple[int],
     indices: Iterable[np.ndarray],
 ) -> Optional[xr.DataArray]:
     if value.shape[-2:] != global_shape:
         return
 
+    # Determine i,j slices for extracting the rectangular region that spans all
+    # grid points included in the local compressed subdomain.
+    # Then subtract the left offset from the indices to make them correspond to
+    # the extracted region.
     region_slices = tuple([slice(ind.min(), ind.max() + 1) for ind in indices])
     all_region_slices = (slice(None),) * (value.ndim - 2) + region_slices
     indices = tuple([ind - ind.min() for ind in indices])
 
     if isinstance(value, np.ndarray):
+        # Values are a simple numpy array (no known dimensions for time, depth, etc.)
+        # Just extract the grid points of the local subdomain (i.e., compress)
+        # and preserve any preceding dimensions (e.g., on-grid depth)
         final_slices = (slice(None),) * (value.ndim - 2) + (np.newaxis,) + indices
         return value[all_region_slices][final_slices]
 
@@ -62,6 +69,40 @@ def map_input_to_compressed_grid(
     return xr.DataArray(
         s, dims=value.dims, coords=coords, attrs=value.attrs, name=s.name
     )
+
+
+def map_input_to_cluster_grid(
+    value: Union[np.ndarray, xr.DataArray], cluster_mask: np.ndarray, bath: np.ndarray
+) -> Optional[xr.DataArray]:
+    if value.shape[-2:] != cluster_mask.shape[1:]:
+        return
+
+    if isinstance(value, np.ndarray):
+        raise NotImplementedError
+
+    assert bath.shape == cluster_mask.shape[1:]
+    include = True
+    if value.getm.z is not None:
+        z = np.asarray(value.getm.z)
+        if (z < 0.0).any():
+            z *= -1
+        include = z[:, np.newaxis, np.newaxis] >= bath[np.newaxis, :, :]
+
+    np_values = np.asarray(value).reshape(value.shape[:-2] + (-1,))
+    result = np.empty(value.shape[:-2] + (1, cluster_mask.shape[0]))
+    for icluster, mask in enumerate(cluster_mask):
+        if include is not True:
+            mask = mask & include
+        mask = mask.reshape(mask.shape[:-2] + (-1,))
+        result[..., 0, icluster] = np_values.mean(axis=-1, where=mask)
+
+    # Keep only coordinates without any horizontal coordinate dimension (x, y)
+    alldims = frozenset(value.dims[-2:])
+    coords = {}
+    for n, c in value.coords.items():
+        if not alldims.intersection(c.dims):
+            coords[n] = c
+    return xr.DataArray(result, dims=value.dims, coords=coords, attrs=value.attrs)
 
 
 class CompressedToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
@@ -404,6 +445,19 @@ def compress_clusters(
                 )
             )
 
+    slc_loc, slc_glob, _, _ = domain.tiling.subdomain2slices()
+    assert domain.nx == slc_glob[-1].stop - slc_glob[-1].start
+    cluster_mask = np.empty((domain.nx,) + cluster_index.shape, dtype=bool)
+    for i, cm in zip(range(slc_glob[-1].start, slc_glob[-1].stop), cluster_mask):
+        cm[...] = cluster_index == i
+
+    domain.input_grid_mappers.append(
+        functools.partial(
+            map_input_to_cluster_grid,
+            cluster_mask=cluster_mask,
+            bath=global_fields["H"],
+        )
+    )
     return domain
 
 
