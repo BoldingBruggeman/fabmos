@@ -360,6 +360,10 @@ def compress_clusters(
         global_values = tiling.comm.bcast(values)
         if global_values is not None:
             global_fields[name] = global_values
+    if "lon" in global_fields:
+        lon_rad = np.pi * global_fields["lon"] / 180.0
+        global_fields["coslon"] = np.cos(lon_rad)
+        global_fields["sinlon"] = np.sin(lon_rad)
 
     unmasked = global_fields["mask"] != 0
     assert clusters.shape == unmasked.shape
@@ -382,6 +386,11 @@ def compress_clusters(
         area = cluster_values["area"].sum()
         compressed_fields["area"][i] = area
 
+        compressed_fields["lon"] = (
+            np.arctan2(compressed_fields["sinlon"], compressed_fields["coslon"])
+            / np.pi
+            * 180
+        )
         mean_lon = compressed_fields["lon"][i]
         mean_lat = compressed_fields["lat"][i]
         dlon = np.abs(global_fields["lon"] - mean_lon)
@@ -390,6 +399,11 @@ def compress_clusters(
         inear = np.ma.array(dist, mask=~sel).argmin()
         near_lon = global_fields["lon"].flat[inear]
         near_lat = global_fields["lat"].flat[inear]
+        compressed_fields["lon"][i] = near_lon
+        compressed_fields["lat"][i] = near_lat
+        if "x" in compressed_fields:
+            compressed_fields["x"][i] = global_fields["x"].flat[inear]
+            compressed_fields["y"][i] = global_fields["y"].flat[inear]
 
         logger.info(f"{c}:")
         logger.info(f"  cell count: {sel.sum()}")
