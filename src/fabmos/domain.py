@@ -86,15 +86,29 @@ def map_input_to_cluster_grid(
         z = np.asarray(value.getm.z)
         if (z < 0.0).any():
             z *= -1
-        include = z[:, np.newaxis, np.newaxis] >= bath[np.newaxis, :, :]
+
+        # Include all points in source (to-be-interpolated) grid that fall
+        # within the target depth range, i.e., that lie at or above the bottom.
+        include = z[:, np.newaxis, np.newaxis] <= bath[np.newaxis, :, :]
+
+        # Also include each source layer just below the bottom depth
+        if z[1] > z[0]:
+            include[1:] = include[:-1] | include[1:]
+            include[0] = True
+        else:
+            include[:-1] = include[:-1] | include[1:]
+            include[-1] = True
 
     np_values = np.asarray(value).reshape(value.shape[:-2] + (-1,))
-    result = np.empty(value.shape[:-2] + (1, cluster_mask.shape[0]))
+    result = np.full(value.shape[:-2] + (1, cluster_mask.shape[0]), np.nan)
     for icluster, mask in enumerate(cluster_mask):
         if include is not True:
             mask = mask & include
         mask = mask.reshape(mask.shape[:-2] + (-1,))
-        result[..., 0, icluster] = np_values.mean(axis=-1, where=mask)
+        mask = np.broadcast_to(mask, np_values.shape)
+        sum = np_values.sum(axis=-1, where=mask)
+        count = mask.sum(axis=-1)
+        np.divide(sum, count, where=count > 0, out=result[..., 0, icluster])
 
     # Keep only coordinates without any horizontal coordinate dimension (x, y)
     alldims = frozenset(value.dims[-2:])
