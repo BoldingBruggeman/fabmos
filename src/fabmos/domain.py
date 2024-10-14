@@ -460,10 +460,11 @@ def compress_clusters(
             )
 
     slc_loc, slc_glob, _, _ = domain.tiling.subdomain2slices()
-    assert domain.nx == slc_glob[-1].stop - slc_glob[-1].start
-    cluster_mask = np.empty((domain.nx,) + cluster_index.shape, dtype=bool)
-    for i, cm in zip(range(slc_glob[-1].start, slc_glob[-1].stop), cluster_mask):
-        cm[...] = cluster_index == i
+    nx_loc = slc_loc[-1].stop - slc_loc[-1].start
+    cluster_mask = np.full((nx_loc,) + cluster_index.shape, False)
+    iglobs = range(slc_glob[-1].start, slc_glob[-1].stop)
+    for iglob, cm in zip(iglobs, cluster_mask):
+        cm[...] = cluster_index == iglob
 
     domain.input_grid_mappers.append(
         functools.partial(
