@@ -8,10 +8,7 @@ import fabmos.transport.tmm
 
 FABM_CONFIG = dict(
     instances=dict(
-        tracer=dict(
-            model="bb/passive",
-            parameters=dict(conserved=True)
-        ),
+        tracer=dict(model="bb/passive", parameters=dict(conserved=True)),
     )
 )
 
@@ -85,7 +82,7 @@ domain = fabmos.transport.tmm.create_domain(args.path)
 sim = fabmos.transport.tmm.Simulator(
     domain,
     calendar=args.calendar,
-    fabm_config=FABM_CONFIG,
+    fabm=FABM_CONFIG,
 )
 sim["tracer_c"].fill(0)
 sim["tracer_c"].values[
@@ -103,7 +100,9 @@ out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_avera
 
 # 1 hour time step for BGC, 12 hour for transport
 fmt = "%Y-%m-%d %H:%M:%S"
-sim.start(cftime.datetime.strptime(args.start_time, fmt, calendar=args.calendar), 12 * 3600.0)
+sim.start(
+    cftime.datetime.strptime(args.start_time, fmt, calendar=args.calendar), 12 * 3600.0
+)
 
 while sim.time < cftime.datetime.strptime(args.stop_time, fmt, calendar=args.calendar):
     sim.advance()
