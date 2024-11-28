@@ -27,7 +27,7 @@ jobs:
         with:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
-          environment-file: ${{ matrix.os == 'windows-latest' && 'environment-win.yml' || 'environment.yml' }}
+          environment-file: environment.yml
           activate-environment: fabmos
       - name: List installed conda packages
         run: conda export
