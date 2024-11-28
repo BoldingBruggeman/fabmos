@@ -18,7 +18,7 @@ fabm_yaml = os.path.join(
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
-sim = fabmos.transport.tmm.Simulator(domain, calendar=calendar, fabm_config=fabm_yaml)
+sim = fabmos.transport.tmm.Simulator(domain, calendar=calendar, fabm=fabm_yaml)
 
 sim.fabm.get_dependency("mole_fraction_of_carbon_dioxide_in_air").set(280.0)
 sim.fabm.get_dependency("surface_air_pressure").set(101325.0)
@@ -35,7 +35,7 @@ rivers = pd.read_fwf(
 rivers = rivers.loc[rivers.lat <= 60.0]
 
 # Convert river list to gridded [2D] river inputs (level increase in m s-1)
-runoff = fabmos.input.riverlist.map_to_grid(domain, rivers.lon, rivers.lat, rivers.flow)
+runoff = fabmos.input.riverlist.map_to_grid(sim.T, rivers.lon, rivers.lat, rivers.flow)
 
 # Reintroduce buried phosphorus, weighted by river runoff
 # (https://doi.org/10.5194/bg-10-8401-2013)

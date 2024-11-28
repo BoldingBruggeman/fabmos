@@ -15,7 +15,7 @@ fabm_yaml = os.path.join(
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
-sim = fabmos.transport.tmm.Simulator(domain, calendar=calendar, fabm_config=fabm_yaml)
+sim = fabmos.transport.tmm.Simulator(domain, calendar=calendar, fabm=fabm_yaml)
 
 # Crude estimate of turbulent diffusivity from temperature-only MLD
 # PISCES uses this to determine turbocline depth

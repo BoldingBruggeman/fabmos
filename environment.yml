@@ -5,8 +5,8 @@ channels:
 dependencies:
   - python>=3.8
   - cmake
-  - fortran-compiler
+  - gfortran
   - pip
-  - pygetm>=0.9.3
+  - pygetm>=0.9.9
   - scipy
   - h5py

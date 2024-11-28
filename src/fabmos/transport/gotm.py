@@ -1,5 +1,6 @@
 from typing import Optional, Union, Tuple
 import os.path
+import logging
 
 import numpy as np
 
@@ -9,7 +10,7 @@ from pygetm import _pygetm
 
 from pygetm.constants import INTERFACES, FILL_VALUE, GRAVITY, RHO0, CENTERS
 from .. import simulator, Array
-from fabmos.domain import _update_coordinates, drop_grids
+from fabmos.domain import _update_coordinates
 import fabmos
 
 
@@ -72,8 +73,9 @@ class Momentum:
         self.cnpar = cnpar
         self.avmmol = avmmol
 
-    def initialize(self, grid):
+    def initialize(self, grid: pygetm.core.Grid, logger: logging.Logger):
         self.grid = grid
+        self.logger = logger
         self.ustar_b = grid.array(
             fill=0.0,
             name="ustar_b",
@@ -212,19 +214,22 @@ class Simulator(simulator.Simulator):
     def __init__(
         self,
         domain: pygetm.domain.Domain,
-        fabm_config: str = "fabm.yaml",
+        vertical_coordinates: fabmos.vertical_coordinates.Base,
+        *,
+        fabm: Union[str, pygetm.fabm.FABM] = "fabm.yaml",
         gotm: Union[str, None] = None,
         log_level: Optional[int] = None,
-        vertical_coordinates: Optional[fabmos.vertical_coordinates.Base] = None,
         airsea: Optional[pygetm.airsea.Fluxes] = None,
         charnock: bool = False,
         charnock_val: float = 1400.0,
         z0s_min: float = 0.02,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_gotm")
+
         super().__init__(
             domain,
-            fabm_config,
+            nz=vertical_coordinates.nz,
+            fabm=fabm,
             log_level=log_level,
             use_virtual_flux=False,
             fabm_libname=fabm_libname,
@@ -232,39 +237,31 @@ class Simulator(simulator.Simulator):
             process_vertical_movement=False,
         )
 
-        domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=1)
-
-        # Drop unused domain variables. Some of these will be NaN,
-        # which causes check_finite to fail.
-        drop_grids(
-            domain,
-            domain.U,
-            domain.V,
-            domain.X,
-            domain.UU,
-            domain.UV,
-            domain.VU,
-            domain.VV,
+        vertical_coordinates.initialize(
+            self.T, logger=self.logger.getChild("vertical_coordinates")
         )
-        for name in ("dx", "dy", "idx", "idy"):
-            del domain.fields[name]
 
-        if vertical_coordinates is not None:
-            domain.vertical_coordinates = vertical_coordinates
-        _update_coordinates(domain.T, domain.global_area, bottom_to_surface=True)
+        _update_coordinates(
+            self.T,
+            self.depth,
+            vertical_coordinates=vertical_coordinates,
+            bottom_to_surface=True,
+        )
 
         self.airsea = airsea or pygetm.airsea.FluxesFromMeteo()
-        self.airsea.initialize(self.domain.T)
+        self.airsea.initialize(self.T, logger=self.logger.getChild("airsea"))
 
         self.ice = pygetm.ice.Ice()
-        self.ice.initialize(self.domain.T)
+        self.ice.initialize(self.T, logger=self.logger.getChild("ice"))
 
         self.momentum = Momentum()
-        self.momentum.initialize(self.domain.T)
+        self.momentum.initialize(self.T, logger=self.logger.getChild("momentum"))
 
-        self.turbulence = pygetm.mixing.GOTM(gotm)
-        self.turbulence.initialize(self.domain.T)
-        self.NN = domain.T.array(
+        self.turbulence = pygetm.vertical_mixing.GOTM(gotm)
+        self.turbulence.initialize(
+            self.T, logger=self.logger.getChild("vertical_mixing")
+        )
+        self.NN = self.T.array(
             z=INTERFACES,
             name="NN",
             units="s-2",
@@ -273,7 +270,7 @@ class Simulator(simulator.Simulator):
             attrs=dict(standard_name="square_of_brunt_vaisala_frequency_in_sea_water"),
         )
         self.NN.fill(0.0)
-        self.ustar_s = domain.T.array(
+        self.ustar_s = self.T.array(
             fill=0.0,
             name="ustar_s",
             units="m s-1",
@@ -281,7 +278,7 @@ class Simulator(simulator.Simulator):
             fill_value=FILL_VALUE,
             attrs=dict(_mask_output=True),
         )
-        self.z0s = domain.T.array(
+        self.z0s = self.T.array(
             name="z0s",
             units="m",
             long_name="hydrodynamic surface roughness",
@@ -293,13 +290,13 @@ class Simulator(simulator.Simulator):
         self.z0s_min = z0s_min
         self.density = pygetm.density.Density()
 
-        self.dpdx = domain.T.array(
+        self.dpdx = self.T.array(
             name="dpdx",
             units="-",
             long_name="surface pressure gradient in x-direction",
             fill_value=FILL_VALUE,
         )
-        self.dpdy = domain.T.array(
+        self.dpdy = self.T.array(
             name="dpdy",
             units="-",
             long_name="surface pressure gradient in y-direction",
@@ -309,7 +306,7 @@ class Simulator(simulator.Simulator):
         self.dpdy.fill(0.0)
 
         self.radiation = TwoBand()
-        self.radiation.initialize(self.domain.T)
+        self.radiation.initialize(self.T, logger=self.logger.getChild("radiation"))
 
         self.temp = self.tracers.add(
             name="temp",
@@ -336,7 +333,7 @@ class Simulator(simulator.Simulator):
         )
         self.temp.fill(5.0)
         self.salt.fill(35.0)
-        self.rho = domain.T.array(
+        self.rho = self.T.array(
             z=CENTERS,
             name="rho",
             units="kg m-3",
@@ -347,11 +344,11 @@ class Simulator(simulator.Simulator):
         )
 
         # Pressure (in dbar = m) is needed for density calculations and FABM
-        self.pres = domain.depth
+        self.pres = self.depth
         self.pres.fabm_standard_name = "pressure"
         self.pres.saved = True
 
-        self.sst = domain.T.array(
+        self.sst = self.T.array(
             name="sst",
             units="degrees_Celsius",
             long_name="sea surface temperature",
@@ -359,7 +356,7 @@ class Simulator(simulator.Simulator):
             attrs=dict(standard_name="sea_surface_temperature", _mask_output=True),
         )
 
-        self.buoy = domain.T.array(
+        self.buoy = self.T.array(
             z=CENTERS,
             name="buoy",
             units="m s-2",
@@ -369,7 +366,7 @@ class Simulator(simulator.Simulator):
 
         self.nuh_ct = None
         if self.fabm and self.fabm.has_dependency("vertical_tracer_diffusivity"):
-            self.nuh_ct = domain.T.array(
+            self.nuh_ct = self.T.array(
                 name="nuh_ct",
                 units="m2 s-1",
                 long_name="turbulent diffusivity of heat",
@@ -397,13 +394,15 @@ class Simulator(simulator.Simulator):
         ]
         self.temp_sf = self.temp.isel(z=-1)
         self.salt_sf = self.salt.isel(z=-1)
-        self.ssu = self.momentum.u.isel(z=-1)
-        self.ssv = self.momentum.v.isel(z=-1)
+        # self.ssu = self.momentum.u.isel(z=-1)
+        # self.ssv = self.momentum.v.isel(z=-1)
+        self.ssu = self.ssv = self.T.array()
+        self.ssu.fill(0.0)
 
         self.relaxation = []
 
-        self.vertical_advection = pygetm.operators.VerticalAdvection(domain.T)
-        self._w = domain.T.array(z=INTERFACES, fill=0.0)
+        self.vertical_advection = pygetm.operators.VerticalAdvection(self.T)
+        self._w = self.T.array(z=INTERFACES, fill=0.0)
 
     def add_relaxation(self, array: Union[str, Array]) -> Tuple[Array, Array]:
         if isinstance(array, str):
@@ -474,7 +473,7 @@ class Simulator(simulator.Simulator):
             self.ustar_s,
             self.momentum.ustar_b,
             self.z0s,
-            self.domain.T.z0b,
+            self.T.z0b,
             self.NN,
             self.momentum.SS,
         )

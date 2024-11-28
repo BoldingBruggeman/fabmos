@@ -15,7 +15,7 @@ fabm_yaml = os.path.join(
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
 sim = fabmos.transport.tmm.Simulator(
-    domain, calendar=calendar, fabm_config=fabm_yaml, periodic_matrix=True
+    domain, calendar=calendar, fabm=fabm_yaml, periodic_matrix=True
 )
 
 sim.fabm.get_dependency("mole_fraction_of_carbon_dioxide_in_air").set(280.0)

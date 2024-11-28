@@ -1,47 +1,36 @@
-from typing import Optional
+from typing import Optional, Union
 import os
 
 import pygetm
 from .. import simulator
 import fabmos
-from ..domain import compress, _update_coordinates, drop_grids
+from ..domain import compress, _update_coordinates
 
 
 class Simulator(simulator.Simulator):
     def __init__(
         self,
         domain: pygetm.domain.Domain,
-        fabm_config: str = "fabm.yaml",
+        *,
         vertical_coordinates: Optional[fabmos.vertical_coordinates.Base] = None,
+        fabm: Union[str, pygetm.fabm.FABM] = "fabm.yaml",
         log_level: Optional[int] = None,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_hz_only")
 
-        domain = compress(domain)
-
-        # Drop unused domain variables. Some of these will be NaN,
-        # which causes check_finite to fail.
-        drop_grids(
-            domain,
-            domain.U,
-            domain.V,
-            domain.X,
-            domain.UU,
-            domain.UV,
-            domain.VU,
-            domain.VV,
-        )
-        for name in ("dx", "dy", "idx", "idy"):
-            del domain.fields[name]
-
         super().__init__(
-            domain,
-            fabm_config,
+            compress(domain),
+            nz=1 if vertical_coordinates is None else vertical_coordinates.nz,
+            fabm=fabm,
             fabm_libname=fabm_libname,
             log_level=log_level,
             use_virtual_flux=False,
         )
 
-        if vertical_coordinates is not None:
-            domain.vertical_coordinates = vertical_coordinates
-        _update_coordinates(domain.T, domain.global_area)
+        if vertical_coordinates:
+            vertical_coordinates.initialize(
+                self.T, logger=self.logger.getChild("vertical_coordinates")
+            )
+        _update_coordinates(
+            self.T, self.depth, vertical_coordinates=vertical_coordinates
+        )

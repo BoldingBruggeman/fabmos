@@ -15,12 +15,7 @@ import pygetm
 import pygetm.parallel
 from pygetm.constants import CENTERS
 from .. import simulator, environment, Array
-from ..domain import (
-    CompressedToFullGrid,
-    map_input_to_compressed_grid,
-    _update_coordinates,
-    drop_grids,
-)
+from ..domain import compress, _update_coordinates
 
 # Note: mpi4py components should be imported after pygetm.parallel,
 # as the latter configures mpi4py.rc
@@ -372,122 +367,30 @@ def create_domain(
     if lon.shape[0] == 1 and lat.shape[0] == 1:
         lat = lat.T
 
-    mask_hz = ideep != 0
-    lon, lat, ideep = np.broadcast_arrays(lon, lat, ideep)
-    H = dz.sum(axis=0)
-
-    # Squeeze out columns with only land. This maps the horizontal from 2D to 1D
-    lon_packed = lon[mask_hz]
-    lat_packed = lat[mask_hz]
-    ideep_packed = ideep[mask_hz]
-    H_packed = H[mask_hz]
-
-    # Simple subdomain division along x dimension
-    tiling = pygetm.parallel.Tiling(nrow=1, comm=comm)
-
-    nx, ny, nz = lon_packed.shape[-1], 1, bathy.shape[0]
-    domain = pygetm.domain.create(
-        nx,
-        ny,
-        nz,
-        lon=lon_packed[np.newaxis, :],
-        lat=lat_packed[np.newaxis, :],
-        mask=1,
-        H=H_packed[np.newaxis, :],
-        spherical=True,
-        tiling=tiling,
-        logger=logger,
-        halox=0,
-        haloy=0,
-    )
-
-    slc_loc, slc_glob, shape_loc, _ = domain.tiling.subdomain2slices()
-    ideep_loc = np.zeros(shape_loc, dtype=ideep.dtype)
-    ideep_loc[slc_loc] = ideep_packed[np.newaxis, :][slc_glob]
-
-    # 3D mask for local subdomain
-    assert ideep_loc.shape[0] == 1
-    domain.wet_loc = np.arange(1, nz + 1) <= ideep_loc[0, :, np.newaxis]
-
-    wet_glob = np.arange(1, nz + 1) <= ideep[:, :, np.newaxis]  # y, x, z
-    wet_glob_tmm_order = np.moveaxis(wet_glob, 2, 0)  # z, y, x
-    nwet_glob = wet_glob.sum()
-    order = np.empty_like(wet_glob, dtype=int)
-    order_tmm = np.moveaxis(order, 2, 0)
-    order_tmm[wet_glob_tmm_order] = np.arange(nwet_glob)
-    order = order[wet_glob]
-    assert order.shape == (nwet_glob,)
-    assert (np.sort(order) == np.arange(nwet_glob)).all()
-    domain.order = order
-
-    domain.nwet = ideep_loc.sum()
-    domain.ideep_loc = ideep_loc
-    domain.counts = np.empty(domain.tiling.n, dtype=int)
-    domain.offsets = np.zeros_like(domain.counts)
-    domain.tiling.comm.Allgather(domain.nwet, domain.counts)
-    nwets_cum = domain.counts.cumsum()
-    domain.offsets[1:] = nwets_cum[:-1]
-    domain.nwet_tot = nwets_cum[-1]
-    offset = domain.offsets[domain.tiling.rank]
-    domain.tmm_slice = slice(offset, offset + domain.nwet)
-    domain.dz = dz[:, np.newaxis, mask_hz]
-    domain.da = da[0, mask_hz][np.newaxis, :]
-    global_indices = np.indices(ideep.shape)
-    local_indices = [i[mask_hz][slc_glob[-1]] for i in global_indices]
-    domain.input_grid_mappers.append(
-        functools.partial(
-            map_input_to_compressed_grid,
-            indices=local_indices,
-            global_shape=mask_hz.shape,
-        )
+    domain = pygetm.domain.create_spherical(
+        lon, lat, mask=np.where(ideep, 1, 0), H=dz.sum(axis=0), logger=logger
     )
     domain._grid_file = path
     domain._delta_t = delta_t
+    domain._order = None
+    domain._nz = dz.shape[0]
+    if domain.comm.rank == 0:
+        domain._h = dz
+        domain._area[1::2, 1::2] = da[0, :, :]
 
-    if domain.tiling.rank == 0:
-        logger.info("Creating uncompressed global domain for output")
-        tiling = pygetm.parallel.Tiling(nrow=1, ncol=1, ncpus=1, comm=tiling.comm)
-        tiling.rank = 0
-        full_domain = pygetm.domain.create(
-            lon.shape[-1],
-            lon.shape[-2],
-            nz,
-            lon=lon,
-            lat=lat,
-            mask=np.where(mask_hz, 1, 0),
-            H=H,
-            spherical=True,
-            tiling=tiling,
-            logger=domain.root_logger,
-            halox=0,
-            haloy=0,
-        )
-        full_domain.initialize(pygetm.BAROCLINIC)
-        _update_coordinates(full_domain.T, da[0, ...], dz)
+        wet = np.arange(1, domain._nz + 1)[:, np.newaxis, np.newaxis] <= ideep
+        domain._mask3d = np.where(wet, 1, 0)
 
-        # By default, transform compressed fields to original 3D domain on output
-        tf = functools.partial(
-            CompressedToFullGrid, grid=full_domain.T, mapping=mask_hz
-        )
-        domain.default_output_transforms.append(tf)
-
-    if False:
-        # Testing:
-        # Initialize a local 3D array (nz, 1, nx) with horizontal indices,
-        # then allgather that array and verify its minimum (0), maximum (nwet_tot-1),
-        # and the difference between consecutive values (0 if from same column,
-        # 1 if from different ones)
-        v_all = np.empty(domain.nwet_tot)
-        v = np.empty((nz, 1, domain.tiling.nx_sub), dtype=float)
-        v[...] = np.arange(domain.tiling.xoffset, domain.tiling.xoffset + v.shape[-1])
-        domain.tiling.comm.Allgatherv(
-            [v.T[domain.wet_loc], MPI.DOUBLE],
-            (v_all, domain.counts, domain.offsets, MPI.DOUBLE),
-        )
-        assert v_all.min() == 0 and v_all.max() == domain.nwet_tot - 1
-        v_diff = np.diff(v_all)
-        assert v_diff.min() == 0 and v_diff.max() == 1
-
+        wet_glob = np.arange(1, domain._nz + 1) <= ideep[:, :, np.newaxis]  # y, x, z
+        wet_glob_tmm_order = np.moveaxis(wet_glob, 2, 0)  # z, y, x
+        nwet_glob = wet_glob.sum()
+        order = np.empty_like(wet_glob, dtype=int)
+        order_tmm = np.moveaxis(order, 2, 0)
+        order_tmm[wet_glob_tmm_order] = np.arange(nwet_glob)
+        order = order[wet_glob]
+        assert order.shape == (nwet_glob,)
+        assert (np.sort(order) == np.arange(nwet_glob)).all()
+        domain._order = order
     return domain
 
 
@@ -500,55 +403,60 @@ def climatology_times(calendar="standard"):
 class Simulator(simulator.Simulator):
     def __init__(
         self,
-        domain: pygetm.domain.Domain,
+        full_domain: pygetm.domain.Domain,
         periodic_matrix: bool = True,
         periodic_forcing: bool = True,
         calendar: str = "standard",
-        fabm_config: str = "fabm.yaml",
+        fabm: Union[str, pygetm.fabm.FABM] = "fabm.yaml",
         log_level: Optional[int] = None,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_tmm")
-        domain.mask3d = domain.T.array(z=CENTERS, dtype=np.intc, fill=0)
-        domain.mask3d.values[:, 0, :] = np.where(domain.wet_loc.T, 1, 0)
-        domain.T._land3d = domain.mask3d.all_values == 0
-        domain.bottom_indices = domain.T.array(dtype=np.intc, fill=0)
-        domain.bottom_indices.values[0, :] = domain.ideep_loc
+
+        domain = compress(full_domain, extra_fields=("_mask3d", "_h"))
 
         super().__init__(
             domain,
-            fabm_config,
+            nz=full_domain._nz,
+            mask3d=domain._mask3d,
+            fabm=fabm,
             fabm_libname=fabm_libname,
             log_level=log_level,
             use_virtual_flux=True,
         )
 
-        # Drop unused domain variables. Some of these will be NaN, which causes check_finite to fail.
-        drop_grids(
-            domain,
-            domain.U,
-            domain.V,
-            domain.X,
-            domain.UU,
-            domain.UV,
-            domain.VU,
-            domain.VV,
-        )
-        for name in ("dx", "dy", "idx", "idy"):
-            del domain.fields[name]
+        slc_loc, slc_glob, _, _ = self.tiling.subdomain2slices()
+
+        self.T.hn.scatter(domain._h)
+        _update_coordinates(self.T, self.depth, h=self.T.hn.values[slc_loc])
 
         self.tmm_logger = self.logger.getChild("TMM")
-        _update_coordinates(self.domain.T, self.domain.da, self.domain.dz)
-        if self.domain.glob and self.domain.glob is not self.domain:
-            _update_coordinates(self.domain.glob.T, self.domain.da, self.domain.dz)
 
-        root = os.path.dirname(self.domain._grid_file)
+        # Retrieve extra TMM attributes from full domain
+        order = full_domain.comm.bcast(full_domain._order)
+        self._grid_file = full_domain._grid_file
+        self._delta_t = full_domain._delta_t
+
+        # 3D Boolean array for mapping between native and TMM layout
+        self.wet_loc = self.T.mask3d.values[:, 0, :].T != 0
+
+        self.nwet = (self.T.mask3d.values != 0).sum()
+        self.counts = np.empty(self.tiling.n, dtype=int)
+        self.offsets = np.zeros_like(self.counts)
+        self.tiling.comm.Allgather(self.nwet, self.counts)
+        nwets_cum = self.counts.cumsum()
+        self.offsets[1:] = nwets_cum[:-1]
+        self.nwet_tot = nwets_cum[-1]
+        offset = self.offsets[self.tiling.rank]
+        self.tmm_slice = slice(offset, offset + self.nwet)
+
+        root = os.path.dirname(full_domain._grid_file)
         config = _read_config(os.path.join(root, "config_data.mat"))
         Ir_pre = _load_mat(
             os.path.join(root, config["matrixPath"], "Data/profile_data.mat"),
             "Ir_pre",
             dtype=int,
         )
-        assert (Ir_pre - 1 == domain.order).all()
+        assert (Ir_pre - 1 == order).all()
 
         Aexp_files = []
         Aimp_files = []
@@ -573,22 +481,22 @@ class Simulator(simulator.Simulator):
         self.Aexp_src = TransportMatrix(
             Aexp_files,
             Aexp_name,
-            self.domain.offsets,
-            self.domain.counts,
-            self.domain.tiling.rank,
-            self.domain.tiling.comm,
+            self.offsets,
+            self.counts,
+            self.tiling.rank,
+            self.tiling.comm,
             logger=self.tmm_logger,
-            order=domain.order,
+            order=order,
         )
         self.Aimp_src = TransportMatrix(
             Aimp_files,
             Aimp_name,
-            self.domain.offsets,
-            self.domain.counts,
-            self.domain.tiling.rank,
-            self.domain.tiling.comm,
+            self.offsets,
+            self.counts,
+            self.tiling.rank,
+            self.tiling.comm,
             logger=self.tmm_logger,
-            order=domain.order,
+            order=order,
             localize=True,
         )
         self.Aexp = self.Aexp_src.create_sparse_array()
@@ -599,7 +507,7 @@ class Simulator(simulator.Simulator):
                 0,
                 matrix_times,
                 climatology=True,
-                comm=domain.tiling.comm,
+                comm=self.tiling.comm,
                 logger=self.tmm_logger,
             )
             self.input_manager._all_fields.append(
@@ -611,7 +519,7 @@ class Simulator(simulator.Simulator):
                 0,
                 matrix_times,
                 climatology=True,
-                comm=domain.tiling.comm,
+                comm=self.tiling.comm,
                 logger=self.tmm_logger,
             )
             self.input_manager._all_fields.append(
@@ -631,7 +539,7 @@ class Simulator(simulator.Simulator):
         ] = []
         self._atmospheric_gases: List[Tuple[Array, Array, float, float]] = []
 
-        self.tot_area = domain.T.area.global_sum(where=domain.T.mask == 1, to_all=True)
+        self.tot_area = self.T.area.global_sum(where=self.T.mask == 1, to_all=True)
 
     def _get_existing_fabm_variable(self, name: str) -> Array:
         for v, array in self.fabm._variable2array.items():
@@ -654,6 +562,24 @@ class Simulator(simulator.Simulator):
         update_interval: Union[datetime.timedelta, int],
         initial_value: float = 0.0,
     ):
+        """Distribute the whole-domain-integral of a 2D (horizontal-only) variable from
+        a FABM model to another 2D FABM variable (typically a horizontal dependency).
+
+        This is typically used to re-insert a permanent loss term such as burial in
+        sediments back into the model, often as a surface flux representing rivers or
+        atmopsheric depositon.
+
+        Args:
+            source: name of the FABM variable to integrate and distribute
+            target: name of the FABM variable to distribute the integral to
+            weights: weights per cell to use when redistributing. Weighting by cell
+                area will be done afterwards, so if weights are equal across the
+                domain, each cell will receive the same value per unit area.
+            update_interval: how often to update the redistributed flux. In between
+                updates, the horizontally-integrated source will be accumulated.
+            initial_value: initial value for the redistributed flux, to be used
+                until the first update_interval is complete.
+        """
         source_array = self._get_existing_fabm_variable(source)
         target_array = self.fabm.get_dependency(target)
         target_array.fill(initial_value)
@@ -702,15 +628,15 @@ class Simulator(simulator.Simulator):
             transport_timestep = transport_timestep.total_seconds()
 
         dt = transport_timestep or timestep
-        nphys = dt / self.domain._delta_t
+        nphys = dt / self._delta_t
         self.tmm_logger.info(
             f"Transport timestep of {dt} s is {nphys} *"
-            f" the original online timestep of {self.domain._delta_t} s."
+            f" the original online timestep of {self._delta_t} s."
         )
         if nphys % 1.0 > 1e-8:
             raise Exception(
                 f"The transport timestep of {dt} s must be an exact multiple"
-                f" of the original online timestep of {self.domain._delta_t} s"
+                f" of the original online timestep of {self._delta_t} s"
             )
 
         self.Aexp_src.scale_factor = dt
@@ -730,19 +656,19 @@ class Simulator(simulator.Simulator):
         )
 
         ntracer = len(self.tracers)
-        tracer_dtype = self.domain.T.H.dtype
-        self.global_tracers = np.empty((self.domain.nwet_tot, ntracer), tracer_dtype)
-        self.local_tracers = self.global_tracers[self.domain.tmm_slice, :]
+        tracer_dtype = self.T.H.dtype
+        self.global_tracers = np.empty((self.nwet_tot, ntracer), tracer_dtype)
+        self.local_tracers = self.global_tracers[self.tmm_slice, :]
         for i, tracer in enumerate(self.tracers):
-            self.local_tracers[:, i] = tracer.values[:, 0, :].T[self.domain.wet_loc]
+            self.local_tracers[:, i] = tracer.values[:, 0, :].T[self.wet_loc]
         recvbuf = (
             self.global_tracers,
-            self.domain.counts * ntracer,
-            self.domain.offsets * ntracer,
+            self.counts * ntracer,
+            self.offsets * ntracer,
             MPI.DOUBLE,
         )
         self.gather_tracer = functools.partial(
-            self.domain.tiling.comm.Iallgatherv, MPI.IN_PLACE, recvbuf
+            self.tiling.comm.Iallgatherv, MPI.IN_PLACE, recvbuf
         )
         self.gather_req = self.gather_tracer()
 
@@ -803,7 +729,7 @@ class Simulator(simulator.Simulator):
         # and subtracting the previous compressed state
         fabm_tracer_change = np.empty_like(self.local_tracers)
         for i, tracer in enumerate(self.tracers):
-            fabm_tracer_change[:, i] = tracer.values[:, 0, :].T[self.domain.wet_loc]
+            fabm_tracer_change[:, i] = tracer.values[:, 0, :].T[self.wet_loc]
         fabm_tracer_change -= self.local_tracers
 
         # Ensure the compressed global tracer state is synchronized across subdomains
@@ -823,18 +749,18 @@ class Simulator(simulator.Simulator):
 
         # Copy the updated compressed state back to the uncompressed state
         for i, tracer in enumerate(self.tracers):
-            tracer.values[:, 0, :].T[self.domain.wet_loc] = self.local_tracers[:, i]
+            tracer.values[:, 0, :].T[self.wet_loc] = self.local_tracers[:, i]
 
     def load_environment(self, periodic: bool, calendar: str):
-        root = os.path.dirname(self.domain._grid_file)
+        root = os.path.dirname(self._grid_file)
 
         times = climatology_times(calendar)
 
         def _get_variable(
             path: str, varname: str, **kwargs
         ) -> Tuple[Array, xr.DataArray]:
-            array = self.domain.T.array(**kwargs)
-            src = get_mat_array(path, varname, self.domain._grid_file, times=times)
+            array = self.T.array(**kwargs)
+            src = get_mat_array(path, varname, self._grid_file, times=times)
             _set(array, src)
             return array, src
 
@@ -895,7 +821,7 @@ class Simulator(simulator.Simulator):
 
         fwf_path = os.path.join(root, "GCM/FreshWaterForcing_gcm.mat")
         tau = _load_mat(fwf_path, "saltRelaxTimegcm")
-        da = _load_mat(self.domain._grid_file, "da", slc=(0, Ellipsis))
+        da = _load_mat(self._grid_file, "da", slc=(0, Ellipsis))
         unmasked = da != 0.0
         if np.any(tau):
             self.logger.info(
@@ -904,7 +830,7 @@ class Simulator(simulator.Simulator):
             )
             assert np.ndim(tau) == 0
             Srelax_src = MatArray(fwf_path, "Srelaxgcm")
-            dz = _load_mat(self.domain._grid_file, "dz", slc=(0, Ellipsis))
+            dz = _load_mat(self._grid_file, "dz", slc=(0, Ellipsis))
             salt_sf_src = pygetm.input.isel(salt_src, z=0)
 
             # The change in surface salinity due to relaxation is
@@ -925,5 +851,5 @@ class Simulator(simulator.Simulator):
             f" global freshwater budget"
         )
         pe_src = pe_src + offset
-        pe_src = _wrap_ongrid_array(pe_src, self.domain._grid_file, times=times)
+        pe_src = _wrap_ongrid_array(pe_src, self._grid_file, times=times)
         _set(self.pe, pe_src)

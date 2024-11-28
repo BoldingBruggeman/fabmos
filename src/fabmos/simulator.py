@@ -4,11 +4,9 @@ import os.path
 
 import cftime
 
+import numpy as np
 import pygetm
 from . import environment, __version__
-
-# Drop "t" postfix from names of T-grid-associated variables
-pygetm.domain.Grid.postfixes[pygetm._pygetm.TGRID] = ""
 
 
 class Simulator(pygetm.simulation.BaseSimulation):
@@ -16,38 +14,75 @@ class Simulator(pygetm.simulation.BaseSimulation):
     def __init__(
         self,
         domain: pygetm.domain.Domain,
-        fabm_config: Optional[str] = "fabm.yaml",
+        nz: int,
+        mask3d: Optional[np.ndarray] = None,
+        fabm: Optional[Union[str, pygetm.fabm.FABM]] = "fabm.yaml",
         fabm_libname: str = os.path.join(os.path.dirname(pygetm.fabm.__file__), "fabm"),
         log_level: Optional[int] = None,
         use_virtual_flux: bool = False,
         squeeze: bool = True,
         add_swr: bool = True,
         process_vertical_movement: bool = True,
+        tiling: Optional[pygetm.parallel.Tiling] = None,
     ):
-        super().__init__(domain, log_level=log_level)
+        super().__init__(domain, log_level=log_level, tiling=tiling)
 
         self.logger.info(f"fabmos {__version__}")
+        self.T = domain.create_grids(
+            nz,
+            halox=0,
+            haloy=0,
+            fields=self._fields,
+            tiling=self.tiling,
+            input_manager=self.input_manager,
+            velocity_grids=0,
+        )
 
-        if fabm_config is not None:
-            self.fabm = pygetm.fabm.FABM(
-                fabm_config,
+        self.unmasked2d = self.T.mask != 0
+        if domain.comm.bcast(mask3d is not None):
+            self.logger.info("3D mask is explicitly defined")
+            self.T.mask3d = self.T.array(z=pygetm.CENTERS, dtype=np.intc, fill_value=0)
+            self.T.mask3d.scatter(mask3d)
+            self.unmasked3d = self.T.mask3d != 0
+            self.T._land3d = ~self.unmasked3d.all_values
+            self.T.bottom_indices = self.T.array(dtype=np.intc, fill=0)
+            self.T.bottom_indices.all_values[:, :] = nz - self.T._land3d.sum(axis=0)
+        else:
+            self.logger.info("3D mask is not defined; inferring from 2D mask")
+            self.unmasked3d = self.T.array(z=pygetm.CENTERS, dtype=bool)
+            self.unmasked3d.all_values[...] = self.unmasked2d.all_values
+
+        if self.unmasked3d.values.all():
+            self.logger.info("No masked points")
+            self.unmasked2d = None
+            self.unmasked3d = None
+
+        if fabm is not None and not isinstance(fabm, pygetm.fabm.FABM):
+            fabm = pygetm.fabm.FABM(
+                fabm,
                 libname=fabm_libname,
                 time_varying=pygetm.TimeVarying.MICRO,
                 squeeze=squeeze,
             )
-        else:
-            self.fabm = None
+        self.fabm = fabm
 
-        self.domain.initialize(pygetm.BAROCLINIC)
-        self.domain.T.postfix = ""
-        self.domain.depth.fabm_standard_name = "pressure"
-
-        self.tracers = pygetm.tracer.TracerCollection(self.domain.T)
+        self.depth = self.T.array(
+            z=pygetm.CENTERS,
+            name="pres",
+            units="dbar",
+            long_name="pressure",
+            fabm_standard_name="depth",
+            fill_value=pygetm.FILL_VALUE,
+        )
+        self.depth.fabm_standard_name = "pressure"
+        self.tracers = pygetm.tracer.TracerCollection(
+            self.T, logger=domain.root_logger.getChild("tracers")
+        )
         self.tracer_totals: List[pygetm.tracer.TracerTotal] = []
         self.surface_radiation = None
         if self.fabm:
             self.fabm.initialize(
-                self.domain.T,
+                self.T,
                 self.tracers,
                 self.tracer_totals,
                 self.logger.getChild("FABM"),
@@ -55,10 +90,10 @@ class Simulator(pygetm.simulation.BaseSimulation):
             if add_swr and self.fabm.has_dependency(
                 "surface_downwelling_shortwave_flux"
             ):
-                self.surface_radiation = environment.ShortWaveRadiation(self.domain.T)
+                self.surface_radiation = environment.ShortWaveRadiation(self.T)
 
         if use_virtual_flux:
-            self.pe = self.domain.T.array(
+            self.pe = self.T.array(
                 name="pe",
                 units="m s-1",
                 long_name="net freshwater flux due to precipitation, condensation,"
@@ -66,19 +101,6 @@ class Simulator(pygetm.simulation.BaseSimulation):
             )
         self.use_virtual_flux = use_virtual_flux
         self.process_vertical_movement = process_vertical_movement
-
-        self.unmasked2d = self.domain.T.mask != 0
-        if hasattr(self.domain, "mask3d"):
-            self.logger.info("3D mask is explicitly defined")
-            self.unmasked3d = self.domain.mask3d != 0
-        else:
-            self.logger.info("3D mask is not defined; inferring from 2D mask")
-            self.unmasked3d = self.domain.T.array(z=pygetm.CENTERS, dtype=bool)
-            self.unmasked3d.all_values[...] = self.unmasked2d[...]
-        if self.unmasked3d.values.all():
-            self.logger.info("No masked points")
-            self.unmasked2d = None
-            self.unmasked3d = None
 
     @pygetm.simulation.log_exceptions
     def start(
@@ -130,7 +152,7 @@ class Simulator(pygetm.simulation.BaseSimulation):
             self.logger.info("Virtual tracer flux due to net freshwater flux not used")
 
         if self.fabm:
-            self.fabm.start(self.time)
+            self.fabm.start(self.timestep, self.time)
 
     def _advance_state(self, macro_active: bool):
         self.logger.debug(f"fabm advancing to {self.time} (dt={self.timestep} s)")
@@ -157,7 +179,7 @@ class Simulator(pygetm.simulation.BaseSimulation):
     def advance_fabm(self, timestep: float):
         if self.tracers_with_virtual_flux:
             # Add virtual flux due to precipitation - evaporation
-            scale = 1.0 - timestep * self.pe.values / self.domain.T.hn.values[0, ...]
+            scale = 1.0 - timestep * self.pe.values / self.T.hn.values[0, ...]
             for tracer in self.tracers_with_virtual_flux:
                 tracer.values[0, :, :] *= scale
 
@@ -177,9 +199,7 @@ class Simulator(pygetm.simulation.BaseSimulation):
             A list with (tracer_total, total, mean) tuples on the root subdomains.
             On non-root subdomains it returns None
         """
-        total_volume = (self.domain.T.hn * self.domain.T.area).global_sum(
-            where=self.unmasked3d
-        )
+        total_volume = (self.T.hn * self.T.area).global_sum(where=self.unmasked3d)
         tracer_totals = [] if total_volume is not None else None
         if self.fabm:
             self.fabm.update_totals()
