@@ -14,7 +14,7 @@ FABM_CONFIG = dict(
 
 parser = argparse.ArgumentParser(
     description="Python implementation of the Transport Matrix Method (TMM) - Khatiwala et. al (2005)",
-    prog=f"mpiexec -np <N> {sys.argv[0]}",
+    prog=f"mpiexec -n <N> {sys.argv[0]}",
     epilog="Implemented by BB in the OceanICU Horizon Europe project (Grant No.101083922).",
 )
 parser.add_argument(
@@ -56,42 +56,15 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-TMM_matrix_config = {
-    "matrix_type": "periodic",
-    #    "path": ".",
-    "path": "/data/kb/OceanICU/MITgcm_2.8deg/Matrix5/TMs",
-    "array_format": "csc",
-    # "array_format": "csr",
-    "constant": {
-        "Ae_fname": "matrix_nocorrection_01.mat",
-        "Ai_fname": "matrix_nocorrection_01.mat",
-    },
-    # "periodic": {"Ae_template": "Ae_%02d", "Ai_template": "Ai_%02d", "num_periods": 12},
-    "periodic": {
-        "Ae_template": "matrix_nocorrection_%02d.mat",
-        "Ai_template": "matrix_nocorrection_%02d.mat",
-        "num_periods": 12,
-        "base_number": 1,
-    },
-    "time_dependent": {},
-}
-
 domain = fabmos.transport.tmm.create_domain(args.path)
 
-# calendar = "360_day"
-sim = fabmos.transport.tmm.Simulator(
-    domain,
-    calendar=args.calendar,
-    fabm=FABM_CONFIG,
+sim = fabmos.transport.tmm.Simulator(domain, calendar=args.calendar, fabm=FABM_CONFIG)
+sim["tracer_c"].fill(
+    (sim.T.lon.values >= args.area[0])
+    & (sim.T.lon.values <= args.area[1])
+    & (sim.T.lat.values >= args.area[2])
+    & (sim.T.lat.values <= args.area[3])
 )
-sim["tracer_c"].fill(0)
-sim["tracer_c"].values[
-    :,
-    (domain.T.lon.values > args.area[0])
-    & (domain.T.lon.values < args.area[1])
-    & (domain.T.lat.values > args.area[2])
-    & (domain.T.lat.values < args.area[3]),
-] = 1.0
 
 out = sim.output_manager.add_netcdf_file(
     "output.nc", interval=datetime.timedelta(days=30)
