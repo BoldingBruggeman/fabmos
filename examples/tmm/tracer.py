@@ -67,11 +67,10 @@ sim["tracer_c"].fill(
 )
 
 out = sim.output_manager.add_netcdf_file(
-    "output.nc", interval=datetime.timedelta(days=30)
+    "output.nc", interval=datetime.timedelta(days=30), save_initial=False
 )
 out.request("temp", "salt", "ice", "wind", *sim.fabm.default_outputs, time_average=True)
 
-# 1 hour time step for BGC, 12 hour for transport
 fmt = "%Y-%m-%d %H:%M:%S"
 sim.start(
     cftime.datetime.strptime(args.start_time, fmt, calendar=args.calendar), 12 * 3600.0

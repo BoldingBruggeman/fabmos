@@ -58,3 +58,6 @@ jobs:
         env:
           I_MPI_FABRICS: shm #:ofi
           FI_PROVIDER: sockets #tcp
+      - name: Test reproducibility for different subdomain decompositions
+        run: |
+          pygetm-test-scaling --nmax 2 --compare output.nc ../examples/tmm/tracer.py --stop_time="2000-02-01 00:00:00"
