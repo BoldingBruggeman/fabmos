@@ -6,6 +6,7 @@ on:
   pull_request:
 jobs:
    install_and_run:
+      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
       runs-on: ${{ matrix.os }}
       env:
         RDMAV_FORK_SAFE: 1
