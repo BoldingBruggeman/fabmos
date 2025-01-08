@@ -261,12 +261,10 @@ def _update_coordinates(
     bottom_to_surface: bool = False,
 ):
     slc_loc, slc_glob, _, _ = grid.tiling.subdomain2slices()
-    grid.D.values[slc_loc] = (grid.H.values + grid.z.values)[slc_loc]
     if vertical_coordinates is not None:
         vertical_coordinates.update(0.0)
     if h is not None:
         grid.hn.values[slc_loc] = h
-    grid.ho.values[slc_loc] = grid.hn.values[slc_loc]
     grid.zf.all_values.fill(0.0)
     grid.zf.all_values[1:] = grid.hn.all_values.cumsum(axis=0)
     if bottom_to_surface:
@@ -279,14 +277,11 @@ def _update_coordinates(
     grid.zc.all_values[:, grid._land] = 0.0
     grid.zf.all_values[:, grid._land] = 0.0
     depth.all_values[...] = -grid.zc.all_values
-    grid.ho.all_values[grid.ho.all_values == 0.0] = grid.ho.fill_value
     grid.hn.all_values[grid.hn.all_values == 0.0] = grid.hn.fill_value
-    grid.ho.attrs["_time_varying"] = False
     grid.hn.attrs["_time_varying"] = False
     grid.zc.attrs["_time_varying"] = False
     grid.zf.attrs["_time_varying"] = False
     depth.attrs["_time_varying"] = False
-    grid.z.attrs["_time_varying"] = False
     grid.D.attrs["_time_varying"] = False
 
 
