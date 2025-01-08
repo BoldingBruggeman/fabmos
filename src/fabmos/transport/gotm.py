@@ -247,6 +247,7 @@ class Simulator(simulator.Simulator):
             vertical_coordinates=vertical_coordinates,
             bottom_to_surface=True,
         )
+        self.T.ho = self.T.hn
 
         self.airsea = airsea or pygetm.airsea.FluxesFromMeteo()
         self.airsea.initialize(self.T, logger=self.logger.getChild("airsea"))
