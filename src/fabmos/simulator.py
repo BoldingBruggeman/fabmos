@@ -90,7 +90,9 @@ class Simulator(pygetm.simulation.BaseSimulation):
             if add_swr and self.fabm.has_dependency(
                 "surface_downwelling_shortwave_flux"
             ):
-                self.surface_radiation = environment.ShortWaveRadiation(self.T)
+                self.surface_radiation = environment.ShortWaveRadiation(
+                    self.T, self.logger.getChild("ShortWaveRadiation")
+                )
 
         if use_virtual_flux:
             self.pe = self.T.array(

@@ -789,7 +789,7 @@ class Simulator(simulator.Simulator):
             fabm_standard_name="practical_salinity",
         )
         if self.fabm.has_dependency("density"):
-            self.rho = self.domain.T.array(
+            self.rho = self.T.array(
                 z=CENTERS,
                 name="rho",
                 units="kg m-3",

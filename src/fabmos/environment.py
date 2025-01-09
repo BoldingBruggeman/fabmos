@@ -1,5 +1,6 @@
 import cftime
 from typing import Union
+import logging
 
 import numpy as np
 import xarray as xr
@@ -8,12 +9,12 @@ import awex
 from awex import AlbedoMethod
 from pygetm import pygsw
 import fabmos
-from pygetm.constants import FILL_VALUE, CENTERS
+from pygetm.constants import FILL_VALUE
 
 
 class ShortWaveRadiation:
-    def __init__(self, grid: fabmos.domain.Grid):
-        self.logger = grid.domain.root_logger.getChild("ShortWaveRadiation")
+    def __init__(self, grid: fabmos.domain.Grid, logger: logging.Logger):
+        self.logger = logger
         self.lon = grid.lon
         self.lat = grid.lat
         self.tcc = grid.array(
