@@ -317,6 +317,8 @@ def compress(
             source = getattr(full_domain, n)
             if source is not None:
                 getattr(domain, n)[1, 1::2] = source[1::2, 1::2][mask_hz]
+            else:
+                setattr(domain, n, None)
         for n in extra_fields:
             source = getattr(full_domain, n)
             setattr(domain, n, source[Ellipsis, np.newaxis, mask_hz])
