@@ -303,21 +303,33 @@ def compress(
 
     The resulting domain will have ny=1 and nx=number of wet points.
     """
-    nwet, kwargs = None, {}
+    nwet = None
     if full_domain.comm.rank == 0:
-        # Squeeze out columns with only land. This maps the horizontal from 2D to 1D
         mask_hz = full_domain._mask[1::2, 1::2] == 1
         nwet = mask_hz.sum()
+    nwet = full_domain.comm.bcast(nwet)
+
+    n_ori = full_domain.nx * full_domain.ny
+    if nwet == n_ori:
+        # Original domain already contained water points only
+        return full_domain
+
+    full_domain.logger.info(
+        f"Compressing {full_domain.nx} x {full_domain.ny} grid"
+        f" to {nwet} wet points ({100 * nwet / n_ori:.1f} %)"
+    )
+
+    # Squeeze out land points from arguments that wil be provided to Domain
+    kwargs = {}
+    if full_domain.comm.rank == 0:
         kwargs["mask"] = 1
         for n in ("lon", "lat", "x", "y", "f", "H"):
             source = getattr(full_domain, "_" + n)
             if source is not None:
                 kwargs[n] = source[1::2, 1::2][mask_hz]
 
-    nx = full_domain.comm.bcast(nwet)
-
     domain = Domain(
-        nx, 1, **kwargs, logger=full_domain.root_logger, comm=full_domain.comm
+        nwet, 1, **kwargs, logger=full_domain.root_logger, comm=full_domain.comm
     )
 
     domain.global_indices = (None, None)

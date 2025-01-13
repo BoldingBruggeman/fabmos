@@ -10,7 +10,7 @@ from pygetm import _pygetm
 
 from pygetm.constants import INTERFACES, FILL_VALUE, GRAVITY, RHO0, CENTERS
 from .. import simulator, Array
-from fabmos.domain import freeze_vertical_coordinates
+from fabmos.domain import freeze_vertical_coordinates, compress
 import fabmos
 
 
@@ -227,7 +227,7 @@ class Simulator(simulator.Simulator):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_gotm")
 
         super().__init__(
-            domain,
+            compress(domain),
             nz=vertical_coordinates.nz,
             fabm=fabm,
             log_level=log_level,
