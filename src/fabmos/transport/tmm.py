@@ -15,7 +15,7 @@ import pygetm
 import pygetm.parallel
 from pygetm.constants import CENTERS
 from .. import simulator, environment, Array
-from ..domain import compress, _update_coordinates
+from ..domain import compress, freeze_vertical_coordinates
 
 # Note: mpi4py components should be imported after pygetm.parallel,
 # as the latter configures mpi4py.rc
@@ -427,7 +427,7 @@ class Simulator(simulator.Simulator):
         slc_loc, slc_glob, _, _ = self.tiling.subdomain2slices()
 
         self.T.hn.scatter(domain._h)
-        _update_coordinates(self.T, self.depth, h=self.T.hn.values[slc_loc])
+        freeze_vertical_coordinates(self.T, self.depth, h=self.T.hn.values[slc_loc])
 
         self.tmm_logger = self.logger.getChild("TMM")
 

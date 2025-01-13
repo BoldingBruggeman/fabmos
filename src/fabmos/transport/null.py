@@ -4,7 +4,7 @@ import os
 import pygetm
 from .. import simulator
 import fabmos
-from ..domain import compress, _update_coordinates
+from ..domain import compress, freeze_vertical_coordinates
 
 
 class Simulator(simulator.Simulator):
@@ -31,6 +31,6 @@ class Simulator(simulator.Simulator):
             vertical_coordinates.initialize(
                 self.T, logger=self.logger.getChild("vertical_coordinates")
             )
-        _update_coordinates(
+        freeze_vertical_coordinates(
             self.T, self.depth, vertical_coordinates=vertical_coordinates
         )

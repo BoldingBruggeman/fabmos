@@ -10,7 +10,7 @@ from pygetm import _pygetm
 
 from pygetm.constants import INTERFACES, FILL_VALUE, GRAVITY, RHO0, CENTERS
 from .. import simulator, Array
-from fabmos.domain import _update_coordinates
+from fabmos.domain import freeze_vertical_coordinates
 import fabmos
 
 
@@ -241,7 +241,7 @@ class Simulator(simulator.Simulator):
             self.T, logger=self.logger.getChild("vertical_coordinates")
         )
 
-        _update_coordinates(
+        freeze_vertical_coordinates(
             self.T,
             self.depth,
             vertical_coordinates=vertical_coordinates,

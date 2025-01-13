@@ -253,18 +253,30 @@ class ClustersToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
             yield ClustersToFullGrid(c, self._grid, self._clusters, g)
 
 
-def _update_coordinates(
+def freeze_vertical_coordinates(
     grid: Grid,
     depth: Array,
     vertical_coordinates: Optional[pygetm.vertical_coordinates.Base] = None,
     h: Optional[np.ndarray] = None,
     bottom_to_surface: bool = False,
 ):
+    """Update layer thicknesses, vertical coordinates, and depth-below-surface,
+    using either prescribed layer thicknesses or a vertical coordinate algorithm.
+    Water depth D must be up to date before entering this routine (by default,
+    this equals bathymetric depth H after initializing a grid)"""
     slc_loc, slc_glob, _, _ = grid.tiling.subdomain2slices()
-    if vertical_coordinates is not None:
-        vertical_coordinates.update(0.0)
     if h is not None:
+        # layer thicknesses specified explicitly
         grid.hn.values[slc_loc] = h
+        where = grid.mask3d.all_values != 0 if hasattr(grid, "mask3d") else np._NoValue
+        h_sum = grid.hn.all_values.sum(axis=0, where=where)
+        assert np.isclose(h_sum, grid.D.all_values, rtol=1e-14).all(where=grid._water)
+    elif vertical_coordinates is not None:
+        # layer thicknesses from vertical coordinate algorithm and water depth D
+        vertical_coordinates.update(0.0)
+    else:
+        assert grid.nz == 1
+        grid.hn.all_values[0, grid._water] = grid.D.all_values
     grid.zf.all_values.fill(0.0)
     grid.zf.all_values[1:] = grid.hn.all_values.cumsum(axis=0)
     if bottom_to_surface:
@@ -276,7 +288,9 @@ def _update_coordinates(
     grid.zc.all_values[...] = 0.5 * (grid.zf.all_values[:-1] + grid.zf.all_values[1:])
     grid.zc.all_values[:, grid._land] = 0.0
     grid.zf.all_values[:, grid._land] = 0.0
-    depth.all_values[...] = -grid.zc.all_values
+    grid.zc._fill_value = 0.0
+    grid.zf._fill_value = 0.0
+    depth.fill(-grid.zc.all_values)
     grid.hn.all_values[grid.hn.all_values == 0.0] = grid.hn.fill_value
     grid.hn.attrs["_time_varying"] = False
     grid.zc.attrs["_time_varying"] = False
