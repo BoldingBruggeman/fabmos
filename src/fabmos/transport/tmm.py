@@ -424,14 +424,13 @@ class Simulator(simulator.Simulator):
             use_virtual_flux=True,
         )
 
-        slc_loc, slc_glob, _, _ = self.tiling.subdomain2slices()
-
         self.T.hn.scatter(domain._h)
-        freeze_vertical_coordinates(self.T, self.depth, h=self.T.hn.values[slc_loc])
+        freeze_vertical_coordinates(self.T, self.depth)
 
         self.tmm_logger = self.logger.getChild("TMM")
 
         # Retrieve extra TMM attributes from full domain
+        # (order exists only on the root node and thus needs to be broadcasted)
         order = full_domain.comm.bcast(full_domain._order)
         self._grid_file = full_domain._grid_file
         self._delta_t = full_domain._delta_t
