@@ -5,6 +5,7 @@ import timeit
 import netCDF4
 import xarray as xr
 import numpy as np
+import numpy.typing as npt
 
 import fabmos
 
@@ -210,3 +211,21 @@ def get_connectivity(
             i = np.arange(domain.nx)
             flow_across[..., i, i] = -flow_across.sum(axis=-2)
             ncvar[itime, ...] = flow_across
+
+
+def split(clusters: npt.ArrayLike) -> np.ma.MaskedArray:
+    from skimage.segmentation import flood_fill
+
+    masked = np.ma.getmaskarray(clusters)
+    clusters = np.asarray(clusters)
+    unique_clusters = np.unique(clusters[~masked])
+    n = -1
+    for c in unique_clusters:
+        while True:
+            indices = (clusters == c).nonzero()
+            if indices[0].size == 0:
+                break
+            n += 1
+            seed_point = (indices[0][0], indices[1][0])
+            flood_fill(clusters, seed_point, -n, connectivity=1, in_place=True)
+    return np.ma.array(-clusters, mask=masked)
