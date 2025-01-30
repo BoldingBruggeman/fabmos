@@ -6,7 +6,7 @@ import numpy.typing as npt
 import xarray as xr
 
 import pygetm
-from pygetm.domain import Domain
+from pygetm.domain import *
 from pygetm import CENTERS, INTERFACES
 
 from . import Array, Grid
