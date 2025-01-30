@@ -6,10 +6,8 @@ import numpy.typing as npt
 import xarray as xr
 
 import pygetm
-from pygetm.domain import *
+from pygetm.domain import Domain
 from pygetm import CENTERS, INTERFACES
-
-from mpi4py import MPI
 
 from . import Array, Grid
 
@@ -17,7 +15,7 @@ from . import Array, Grid
 class map_input_to_compressed_grid:
     def __init__(
         self,
-        grid: pygetm.core.Grid,
+        grid: Grid,
         global_shape: Tuple[int],
         global_indices: Iterable[np.ndarray],
     ):
@@ -90,9 +88,7 @@ class map_input_to_compressed_grid:
 
 
 class map_input_to_cluster_grid:
-    def __init__(
-        self, grid: pygetm.core.Grid, cluster_index: np.ndarray, bath: np.ndarray
-    ):
+    def __init__(self, grid: Grid, cluster_index: np.ndarray, bath: np.ndarray):
         slc_loc, slc_glob, _, _ = grid.tiling.subdomain2slices()
 
         nx_loc = slc_loc[-1].stop - slc_loc[-1].start
@@ -151,6 +147,12 @@ class map_input_to_cluster_grid:
 
 
 class CompressedToFullDomain(pygetm.output.operators.UnivariateTransformWithData):
+    @staticmethod
+    def apply(source: pygetm.output.operators.Base, **kwargs):
+        if isinstance(source, pygetm.output.operators.WrappedArray):
+            return source
+        return CompressedToFullDomain(source, **kwargs)
+
     def __init__(
         self,
         source: pygetm.output.operators.Base,
@@ -193,7 +195,12 @@ class CompressedToFullDomain(pygetm.output.operators.UnivariateTransformWithData
             x, y = self._target_domain.x, self._target_domain.y
         globals_arrays = (x[1::2, 1::2], y[1::2, 1::2], None)
         for c, g in zip(self._source.coords, globals_arrays):
-            yield CompressedToFullDomain(c, self._target_domain, self._slice[-1], g)
+            yield CompressedToFullDomain.apply(
+                c,
+                target_domain=self._target_domain,
+                mapping=self._slice[-1],
+                global_array=g,
+            )
 
 
 class ClustersToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
@@ -352,7 +359,7 @@ def compress(
 
         # By default, transform compressed fields to original 3D domain on output
         kwargs = dict(target_domain=full_domain, mapping=mask_hz)
-        tf = functools.partial(CompressedToFullDomain, **kwargs)
+        tf = functools.partial(CompressedToFullDomain.apply, **kwargs)
         domain.default_output_transforms.append(tf)
     else:
         for n in extra_fields:
@@ -367,6 +374,60 @@ def compress(
     )
 
     return domain
+
+
+class ClusterConnections:
+    def __init__(self, domain: Domain, cluster_index: np.ndarray, n: int):
+        assert cluster_index.shape == (domain.ny, domain.nx)
+        uconnection = cluster_index[:, :-1] != cluster_index[:, 1:]
+        vconnection = cluster_index[:-1, :] != cluster_index[1:, :]
+        valid = cluster_index != -1
+        uconnection &= valid[:, 1:] & valid[:, :-1]
+        vconnection &= valid[1:, :] & valid[:-1, :]
+        usources = cluster_index[:, :-1][uconnection]
+        utargets = cluster_index[:, 1:][uconnection]
+        vsources = cluster_index[:-1, :][vconnection]
+        vtargets = cluster_index[1:, :][vconnection]
+        assert (usources != utargets).all()
+        assert (vsources != vtargets).all()
+        self.n = n
+        self.nx, self.ny = domain.nx, domain.ny
+        self.uslice = (Ellipsis, usources, utargets)
+        self.vslice = (Ellipsis, vsources, vtargets)
+        self.uslice_rev = (Ellipsis, utargets, usources)
+        self.vslice_rev = (Ellipsis, vtargets, vsources)
+        self.uconnection = (Ellipsis,) + np.nonzero(uconnection)
+        self.vconnection = (Ellipsis,) + np.nonzero(vconnection)
+        self.lon_u = domain.lon[1::2, 2:-1:2][uconnection]
+        self.lat_u = domain.lat[1::2, 2:-1:2][uconnection]
+        self.lon_v = domain.lon[2:-1:2, 1::2][vconnection]
+        self.lat_v = domain.lat[2:-1:2, 1::2][vconnection]
+        self.length_u = domain.dy[1::2, 2:-1:2][uconnection]
+        self.length_v = domain.dx[2:-1:2, 1::2][vconnection]
+
+        if domain.rotation is not None:
+            self.rotator_u = pygetm.core.Rotator(
+                domain.rotation[1::2, 2:-1:2][uconnection]
+            )
+            self.rotator_v = pygetm.core.Rotator(
+                domain.rotation[2:-1:2, 1::2][vconnection]
+            )
+
+    def __call__(self, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+        u = np.asarray(u)
+        v = np.asarray(v)
+        if u.shape[-2:] == (self.ny, self.nx - 1):
+            # u and v on original grid (2D); extract relevant interfaces (1D)
+            assert v.shape[-2:] == (self.ny - 1, self.nx)
+            assert u.shape[:-2] == v.shape[:-2]
+            u = u[self.uconnection]
+            v = v[self.vconnection]
+        out = np.zeros(u.shape[:-1] + (self.n, self.n), dtype=u.dtype)
+        np.add.at(out, self.uslice, np.maximum(u, 0.0))
+        np.add.at(out, self.uslice_rev, -np.minimum(u, 0.0))
+        np.add.at(out, self.vslice, np.maximum(v, 0.0))
+        np.add.at(out, self.vslice_rev, -np.minimum(v, 0.0))
+        return out
 
 
 def compress_clusters(
@@ -387,11 +448,16 @@ def compress_clusters(
     clusters = np.ma.asarray(clusters)
     assert clusters.shape == (full_domain.ny, full_domain.nx)
 
+    logger = full_domain.logger
+
     to_compress = ("mask", "lon", "lat", "x", "y", "H", "area", "rotation")
     ncluster = None
+    cluster_index = None
     global_fields = {}
     compressed_fields = {}
     if full_domain.comm.rank == 0:
+        # Collect fields from full domain that will be averaged over clusters
+        # For longitude, use cos and sin to handle periodic boundary condition
         for name in to_compress:
             source = getattr(full_domain, "_" + name)
             if source is not None:
@@ -400,61 +466,59 @@ def compress_clusters(
             lon_rad = np.pi * global_fields["lon"] / 180.0
             global_fields["coslon"] = np.cos(lon_rad)
             global_fields["sinlon"] = np.sin(lon_rad)
+        global_fields["j"], global_fields["i"] = np.indices(
+            (full_domain.ny, full_domain.nx), dtype=float
+        )
 
+        # Mask combines original domain mask and cluster mask (if any)
         unmasked = global_fields["mask"] != 0
         assert clusters.shape == unmasked.shape
         unmasked &= ~np.ma.getmaskarray(clusters)
 
+        # Ensure bathymetry is valid in all unmasked points
         assert np.isfinite(global_fields["H"][unmasked]).all()
 
+        # Cast clusters to regular array and collect unique cluster identifiers
         clusters = np.asarray(clusters)
         unique_clusters = np.unique(clusters[unmasked])
-
         ncluster = unique_clusters.size
-        logger = full_domain.logger
         logger.info(f"Found {ncluster} unique clusters:")
 
+        cluster_index = np.full(clusters.shape, -1, dtype=np.int16)
+        for i, v in enumerate(unique_clusters):
+            cluster_index[(clusters == v) & unmasked] = i
+
+        # Prepare arrays for compressed (= per-cluster) domain fields
         for name, values in global_fields.items():
             compressed_fields[name] = np.empty((ncluster,), dtype=values.dtype)
 
         for i, c in enumerate(unique_clusters):
-            sel = (clusters == c) & unmasked
+            selected = cluster_index == i
+
+            # Average over cluster (or in the case of surface area: sum)
             cluster_values = {}
             for name, values in global_fields.items():
-                cluster_values[name] = values[sel]
+                cluster_values[name] = values[selected]
                 compressed_fields[name][i] = cluster_values[name].mean()
             area = cluster_values["area"].sum()
             compressed_fields["area"][i] = area
+            if "lon" in global_fields:
+                compressed_fields["lon"] = (
+                    np.arctan2(compressed_fields["sinlon"], compressed_fields["coslon"])
+                    / np.pi
+                    * 180
+                )
 
-            compressed_fields["lon"] = (
-                np.arctan2(compressed_fields["sinlon"], compressed_fields["coslon"])
-                / np.pi
-                * 180
-            )
-            mean_lon = compressed_fields["lon"][i]
-            mean_lat = compressed_fields["lat"][i]
-            dlon = np.abs(global_fields["lon"] - mean_lon)
-            dlon[dlon > 180] = 360 - dlon[dlon > 180]
-            dist = dlon**2 + (global_fields["lat"] - mean_lat) ** 2
-            inear = np.ma.array(dist, mask=~sel).argmin()
-            near_lon = global_fields["lon"].flat[inear]
-            near_lat = global_fields["lat"].flat[inear]
-            compressed_fields["lon"][i] = near_lon
-            compressed_fields["lat"][i] = near_lat
-            if "x" in compressed_fields:
-                compressed_fields["x"][i] = global_fields["x"].flat[inear]
-                compressed_fields["y"][i] = global_fields["y"].flat[inear]
-
-            logger.info(f"{c}:")
-            logger.info(f"  cell count: {sel.sum()}")
-            logger.info(
-                f"  mean coordinates: {mean_lon:.6f} °East, {mean_lat:.6f} °North"
-            )
-            logger.info(
-                f"  final coordinates: {near_lon:.6f} °East, {near_lat:.6f} °North"
-            )
-            logger.info(f"  mean depth: {compressed_fields['H'][i]:.1f} m")
-            logger.info(f"  total area: {1e-6 * area:.1f} km2")
+            logger.info(f"  {c}:")
+            logger.info(f"    cell count: {selected.sum()}")
+            if "lon" in global_fields and "lat" in global_fields:
+                logger.info(
+                    "    mean coordinates:"
+                    f" {compressed_fields['lon'][i]:.6f} °East,"
+                    f" {compressed_fields['lat'][i]:.6f} °North"
+                )
+            logger.info(f"    mean depth: {compressed_fields['H'][i]:.1f} m")
+            logger.info(f"    total area: {1e-6 * area:.1f} km2")
 
     domain = pygetm.domain.Domain(
         nx=full_domain.comm.bcast(ncluster),
@@ -470,15 +534,13 @@ def compress_clusters(
         comm=full_domain.comm,
     )
 
-    cluster_index = None
     if domain.comm.rank == 0:
-        cluster_index = np.full(clusters.shape, -1, dtype=np.int16)
-        for i, v in enumerate(unique_clusters):
-            cluster_index[clusters == v] = i
-
-        domain._area[1, 1::2] = compressed_fields["area"][:]
+        domain.full_cluster_index = cluster_index
+        domain._area[1, 1::2] = compressed_fields["area"]
         domain._dx[1, 1::2] = np.sqrt(domain._area[1, 1::2])
         domain._dy[1, 1::2] = domain._dx[1, 1::2]
+        domain.icluster = compressed_fields["i"]
+        domain.jcluster = compressed_fields["j"]
         for name in ("x", "y", "lon", "lat"):
             source = getattr(full_domain, name)
             if source is not None:
@@ -488,7 +550,7 @@ def compress_clusters(
             tf = functools.partial(
                 ClustersToFullGrid,
                 grid=full_domain.T,
-                clusters=[clusters == c for c in unique_clusters],
+                clusters=[cluster_index == i for i in range(len(unique_clusters))],
             )
             domain.default_output_transforms.append(tf)
         else:
@@ -501,14 +563,42 @@ def compress_clusters(
                 )
             )
             for name in ("x", "y", "lon", "lat"):
-                source = getattr(full_domain, name)
-                if source is not None:
-                    attrs = {}  # {"units": array.units, "long_name": array.long_name}
+                if name in global_fields:
+                    info = Grid._array_args[name]
+                    attrs = {
+                        k: v for k, v in info["attrs"].items() if not k.startswith("_")
+                    }
+                    attrs.update(units=info["units"], long_name=info["long_name"])
                     domain.extra_output_coordinates.append(
                         pygetm.output.operators.WrappedArray(
                             global_fields[name], name + "_", dims_, attrs=attrs
                         )
                     )
+            domain.extra_output_coordinates.append(
+                pygetm.output.operators.WrappedArray(
+                    compressed_fields["i"], "icluster", ("x",)
+                )
+            )
+            domain.extra_output_coordinates.append(
+                pygetm.output.operators.WrappedArray(
+                    compressed_fields["j"], "jcluster", ("x",)
+                )
+            )
+            domain.extra_output_coordinates.append(
+                pygetm.output.operators.WrappedArray(unique_clusters, "cluster", ("x",))
+            )
+        domain.full_mask = np.where(unmasked, 1, 0)
+        domain.cluster_ids = unique_clusters
+        for name in ("x", "y", "lon", "lat"):
+            if name in global_fields:
+                setattr(domain, f"full_{name}", global_fields[name])
+
+        domain.connections = ClusterConnections(full_domain, cluster_index, ncluster)
+        interfaces = domain.connections(
+            full_domain._dy[1::2, 2:-1:2], full_domain._dx[2:-1:2, 1::2]
+        )
+        interfaces += interfaces.T
+        domain.interfaces = interfaces
 
     domain.input_grid_mappers.append(
         functools.partial(
