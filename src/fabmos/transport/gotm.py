@@ -3,6 +3,7 @@ import os.path
 import logging
 
 import numpy as np
+import xarray as xr
 
 import pygetm.domain
 import pygetm.airsea
@@ -220,9 +221,12 @@ class Simulator(simulator.Simulator):
         gotm: Union[str, None] = None,
         log_level: Optional[int] = None,
         airsea: Optional[pygetm.airsea.Fluxes] = None,
+        ice: Optional[pygetm.ice.Base] = None,
         charnock: bool = False,
         charnock_val: float = 1400.0,
         z0s_min: float = 0.02,
+        wind_relative_to_ssuv: bool = True,
+        connectivity: Optional[xr.DataArray] = None,
     ):
         fabm_libname = os.path.join(os.path.dirname(__file__), "..", "fabm_gotm")
 
@@ -252,7 +256,7 @@ class Simulator(simulator.Simulator):
         self.airsea = airsea or pygetm.airsea.FluxesFromMeteo()
         self.airsea.initialize(self.T, logger=self.logger.getChild("airsea"))
 
-        self.ice = pygetm.ice.Ice()
+        self.ice = ice or pygetm.ice.Ice()
         self.ice.initialize(self.T, logger=self.logger.getChild("ice"))
 
         self.momentum = Momentum()
@@ -395,15 +399,31 @@ class Simulator(simulator.Simulator):
         ]
         self.temp_sf = self.temp.isel(z=-1)
         self.salt_sf = self.salt.isel(z=-1)
-        # self.ssu = self.momentum.u.isel(z=-1)
-        # self.ssv = self.momentum.v.isel(z=-1)
-        self.ssu = self.ssv = self.T.array()
-        self.ssu.fill(0.0)
+        if wind_relative_to_ssuv:
+            self.ssu = self.momentum.u.isel(z=-1)
+            self.ssv = self.momentum.v.isel(z=-1)
+        else:
+            self.ssu = self.ssv = self.T.array()
+            self.ssu.fill(0.0)
 
         self.relaxation = []
 
         self.vertical_advection = pygetm.operators.VerticalAdvection(self.T)
         self._w = self.T.array(z=INTERFACES, fill=0.0)
+
+        if connectivity is not None:
+            self.connectivity_matrix = np.empty((domain.nx, domain.nx))
+            if connectivity.getm.time is not None:
+                connectivity = pygetm.input.temporal_interpolation(
+                    connectivity, comm=self.tiling.comm, logger=self.logger
+                )
+                self.input_manager._all_fields.append(
+                    (connectivity.name, connectivity.data, self.connectivity_matrix)
+                )
+            else:
+                self.connectivity_matrix[...] = connectivity
+        else:
+            self.connectivity_matrix = None
 
     def add_relaxation(self, array: Union[str, Array]) -> Tuple[Array, Array]:
         if isinstance(array, str):
@@ -488,6 +508,15 @@ class Simulator(simulator.Simulator):
                 self.vertical_advection(self.momentum.w, self._w, timestep, tracer)
 
         self.tracers._diffuse(timestep, self.turbulence.nuh)
+
+        self._horizontal_connectivity(timestep)
+
+    def _horizontal_connectivity(self, timestep):
+        if self.connectivity_matrix is not None:
+            scale = timestep / (self.T.D.values * self.T.area.values)
+            for tracer in self.tracers:
+                gains = tracer.values[:, 0, :, np.newaxis] * self.connectivity_matrix
+                tracer.values[:, 0, :] += gains.sum(axis=-2) * scale
 
         for array, target, rate in self.relaxation:
             array += (target.values - array.values) * (rate.values * timestep)
