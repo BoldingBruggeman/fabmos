@@ -11,7 +11,7 @@ authors = [
 description = "Offline simulator for FABM"
 requires-python = ">=3.8"
 dependencies = [
-  "pygetm >= 0.9.10"
+  "pygetm >= 0.9.12"
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
