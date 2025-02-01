@@ -3,7 +3,7 @@
 To install a pre-built version from Anaconda (Linux/Mac/Windows):
 
 ```
-conda install -c conda-forge -c bolding-bruggeman fabmos
+conda install -c conda-forge fabmos
 ```
 
 To build from source:
