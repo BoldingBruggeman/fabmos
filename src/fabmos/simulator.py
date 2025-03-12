@@ -45,6 +45,12 @@ class Simulator(pygetm.simulation.BaseSimulation):
             self.T.mask3d.scatter(mask3d)
             self.unmasked3d = self.T.mask3d != 0
             self.T._land3d = ~self.unmasked3d.all_values
+            self.T._land3d_if = np.empty_like(
+                self.T._land3d, shape=(nz + 1, *self.T._land3d.shape[1:])
+            )
+            self.T._land3d_if[0] = self.T._land3d[0]
+            self.T._land3d_if[1:-1] = self.T._land3d[:-1] | self.T._land3d[1:]
+            self.T._land3d_if[-1] = self.T._land3d[-1]
             self.T.bottom_indices = self.T.array(dtype=np.intc, fill=0)
             self.T.bottom_indices.all_values[:, :] = nz - self.T._land3d.sum(axis=0)
         else:
