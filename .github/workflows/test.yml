@@ -30,6 +30,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           environment-file: environment.yml
           activate-environment: fabmos
+          channels: conda-forge
           conda-remove-defaults: true
       - name: List installed conda packages
         run: conda export
