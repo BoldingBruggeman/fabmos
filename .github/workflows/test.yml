@@ -42,7 +42,7 @@ jobs:
       - name: Compile and install fabmos
         run: pip install -v .
       - name: Download TMM setup
-        run: curl -s http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/MITgcm_2.8deg.tar -o MITgcm_2.8deg.tar
+        run: curl -s https://zenodo.org/records/5517238/files/MITgcm_2.8deg.tar -o MITgcm_2.8deg.tar
       - name: Extract TMM setup
         run: tar -xvf MITgcm_2.8deg.tar --exclude "MITgcm_2.8deg/GCM/basepath.mat" --exclude "MITgcm_2.8deg/BiogeochemData/basepath.mat"
       - name: Run TMM setup in serial
