@@ -1,4 +1,5 @@
-from ._version import __version__
+import importlib.metadata
+__version__ = importlib.metadata.version(__name__)
 
 from pygetm import TimeUnit, CoordinateType
 from pygetm import vertical_coordinates

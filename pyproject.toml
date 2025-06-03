@@ -28,6 +28,3 @@ classifiers = [
 #packages = ["fabmos"]
 
 [tool.setuptools_scm]
-version_file = "src/fabmos/_version.py"
-version_scheme = "post-release"
-local_scheme = "dirty-tag"
