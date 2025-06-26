@@ -11,18 +11,14 @@ calendar = "360_day"
 FABM_CONFIG = dict(
     instances=dict(
         tracer=dict(
-            model="bb/passive",
+            model="tracer",
         ),
     )
 )
 
 domain = fabmos.transport.tmm.create_domain(tm_config_dir)
 
-sim = fabmos.transport.tmm.Simulator(
-    domain,
-    calendar=calendar,
-    fabm_config=FABM_CONFIG,
-)
+sim = fabmos.transport.tmm.Simulator(domain, calendar=calendar, fabm=FABM_CONFIG)
 
 out = sim.output_manager.add_netcdf_file(
     "output.nc", interval=1, interval_units=fabmos.TimeUnit.MONTHS

@@ -8,7 +8,7 @@ import fabmos.transport.tmm
 
 FABM_CONFIG = dict(
     instances=dict(
-        tracer=dict(model="bb/passive", parameters=dict(conserved=True)),
+        tracer=dict(model="tracer", parameters=dict(conserved=True)),
     )
 )
 
