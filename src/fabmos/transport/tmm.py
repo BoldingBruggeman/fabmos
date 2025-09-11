@@ -220,7 +220,7 @@ class TransportMatrix(pygetm.input.LazyArray):
             # MATLAB < 7.3 format
             vardict = scipy.io.loadmat(fn, variable_names=(self._group_name,))
             ## Convert COO matrix to CSC format if needed
-            A = vardict[self._group_name].tocsc()                
+            A = vardict[self._group_name].tocsc()
             A_ir = A.indices
             A_jc = A.indptr
             dtype = A.dtype
@@ -436,8 +436,10 @@ class Simulator(simulator.Simulator):
         self._grid_file = full_domain._grid_file
         self._delta_t = full_domain._delta_t
 
-        # 3D Boolean array for mapping between native and TMM layout
-        self.wet_loc = self.T.mask3d.values[:, 0, :].T != 0
+        # Slice that extracts wet points in TMM order (z = fastest varying dimension)
+        # from flattened 3D array in (z,y=1,x) order
+        weti, wetk = np.nonzero(self.T.mask3d.values[:, 0, :].T)
+        self.wet_indices = wetk * self.T.nx + weti
 
         self.nwet = (self.T.mask3d.values != 0).sum()
         self.counts = np.empty(self.tiling.n, dtype=int)
@@ -660,7 +662,7 @@ class Simulator(simulator.Simulator):
         self.global_tracers = np.empty((self.nwet_tot, ntracer), tracer_dtype)
         self.local_tracers = self.global_tracers[self.tmm_slice, :]
         for i, tracer in enumerate(self.tracers):
-            self.local_tracers[:, i] = tracer.values[:, 0, :].T[self.wet_loc]
+            self.local_tracers[:, i] = tracer.values.ravel()[self.wet_indices]
         recvbuf = (
             self.global_tracers,
             self.counts * ntracer,
@@ -729,7 +731,7 @@ class Simulator(simulator.Simulator):
         # and subtracting the previous compressed state
         fabm_tracer_change = np.empty_like(self.local_tracers)
         for i, tracer in enumerate(self.tracers):
-            fabm_tracer_change[:, i] = tracer.values[:, 0, :].T[self.wet_loc]
+            fabm_tracer_change[:, i] = tracer.values.ravel()[self.wet_indices]
         fabm_tracer_change -= self.local_tracers
 
         # Ensure the compressed global tracer state is synchronized across subdomains
@@ -749,7 +751,7 @@ class Simulator(simulator.Simulator):
 
         # Copy the updated compressed state back to the uncompressed state
         for i, tracer in enumerate(self.tracers):
-            tracer.values[:, 0, :].T[self.wet_loc] = self.local_tracers[:, i]
+            tracer.values.ravel()[self.wet_indices] = self.local_tracers[:, i]
 
     def load_environment(self, periodic: bool, calendar: str):
         root = os.path.dirname(self._grid_file)
