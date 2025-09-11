@@ -735,13 +735,13 @@ class Simulator(simulator.Simulator):
         MPI.Request.Wait(self.gather_req)
 
         # Do the explicit step
-        new_local_tracers = self.Aexp.dot(self.global_tracers)
+        new_local_tracers = self.Aexp @ self.global_tracers
 
         # Add the biogeochemical/FABM tracer increment
         new_local_tracers += fabm_tracer_change
 
         # Do the implicit step
-        self.local_tracers[:, :] = self.Aimp.dot(new_local_tracers)
+        self.local_tracers[:, :] = self.Aimp @ new_local_tracers
 
         # Start synchronizing the compressed tracer state across subdomains
         self.gather_req = self.gather_tracer()
