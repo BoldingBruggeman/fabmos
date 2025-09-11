@@ -219,7 +219,7 @@ class TransportMatrix(pygetm.input.LazyArray):
         except OSError:
             # MATLAB < 7.3 format
             vardict = scipy.io.loadmat(fn, variable_names=(self._group_name,))
-            ## Convert COO matrix to CSR format if needed
+            ## Convert COO matrix to CSC format if needed
             A = vardict[self._group_name].tocsc()                
             A_ir = A.indices
             A_jc = A.indptr
