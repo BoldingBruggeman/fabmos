@@ -735,7 +735,7 @@ class Simulator(simulator.Simulator):
         fabm_tracer_change -= self.local_tracers
 
         # Ensure the compressed global tracer state is synchronized across subdomains
-        MPI.Request.Wait(self.gather_req)
+        self.gather_req.Wait()
 
         # Do the explicit step
         new_local_tracers = self.Aexp @ self.global_tracers
