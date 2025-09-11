@@ -186,8 +186,8 @@ class TransportMatrix(pygetm.input.LazyArray):
             values[self.diag_indices] += 1.0
         if self.power != 1:
             # Matrix power for local block (current subdomain only)
-            csr = self.create_sparse_array(values, scipy.sparse.csr_matrix)
-            csr2 = csr**self.power
+            csr = self.create_sparse_array(values)
+            csr2 = scipy.sparse.linalg.matrix_power(csr, self.power)
             csr2.sort_indices()
             assert (csr.indices == csr2.indices).all()
             assert (csr.indptr == csr2.indptr).all()
@@ -273,11 +273,11 @@ class TransportMatrix(pygetm.input.LazyArray):
         return data[self.index_map]
 
     def create_sparse_array(
-        self, data: Optional[np.ndarray] = None, type=scipy.sparse.csr_array
+        self, data: Optional[np.ndarray] = None
     ) -> scipy.sparse.csr_array:
         if data is None:
             data = np.empty((self.shape[-1],), self.dtype)
-        return type(
+        return scipy.sparse.csr_array(
             (data, self.indices, self.indptr),
             self.dense_shape,
         )
