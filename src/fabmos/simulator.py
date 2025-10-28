@@ -24,18 +24,21 @@ class Simulator(pygetm.simulation.BaseSimulation):
         add_swr: bool = True,
         process_vertical_movement: bool = True,
         tiling: Optional[pygetm.parallel.Tiling] = None,
+        velocity_grids: int = 0,
+        halox: int = 0,
+        haloy: int = 0,
     ):
         super().__init__(domain, log_level=log_level, tiling=tiling)
 
         self.logger.info(f"fabmos {__version__}")
         self.T = domain.create_grids(
             nz,
-            halox=0,
-            haloy=0,
+            halox=halox,
+            haloy=haloy,
             fields=self._fields,
             tiling=self.tiling,
             input_manager=self.input_manager,
-            velocity_grids=0,
+            velocity_grids=velocity_grids,
         )
 
         self.unmasked2d = self.T.mask != 0
