@@ -8,7 +8,7 @@ import fabmos.input.riverlist
 
 import pandas as pd
 
-tm_config_dir = "."  # directory with a TM configuration from http://kelvin.earth.ox.ac.uk/spk/Research/TMM/TransportMatrixConfigs/
+tm_config_dir = "."  # directory with a TM configuration from https://sites.google.com/view/samarkhatiwala-research-tmm
 calendar = "360_day"  # any valid calendar recognized by cftime, see https://cfconventions.org/cf-conventions/cf-conventions.html#calendar
 
 script_dir = os.path.dirname(__file__)
