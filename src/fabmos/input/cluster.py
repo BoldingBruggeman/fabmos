@@ -1,4 +1,4 @@
-from typing import Optional, Iterable, Callable
+from typing import Optional, Iterable, Callable, Mapping
 import logging
 import timeit
 
@@ -13,21 +13,58 @@ import fabmos
 # fabmos.input.debug_nc_reads()
 
 
-def average_uv(u10, v10, **name2values):
+def average_uv(u10: npt.ArrayLike, v10: npt.ArrayLike):
     mean_length = np.hypot(u10, v10).mean(axis=-1)
     mean_angle = np.arctan2(u10.sum(axis=-1), v10.sum(axis=-1))
-    return dict(
-        u10=np.sin(mean_angle) * mean_length, v10=np.cos(mean_angle) * mean_length
-    )
+    return np.sin(mean_angle) * mean_length, np.cos(mean_angle) * mean_length
 
 
 def average(
     domain: fabmos.domain.Domain,
-    infile: str,
+    ds: xr.Dataset,
     outfile: str,
     *,
     variables: Optional[Iterable[str]] = None,
-    chunksize=24,
+    logger: Optional[logging.Logger] = None,
+    averagers: Mapping[Iterable[str], Callable] = {},
+    **kwargs,
+) -> xr.Dataset:
+    if logger is None:
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger()
+
+    name2da: dict[str, xr.DataArray] = {}
+    if variables is None:
+        for name, da in ds.items():
+            if da.getm.longitude is not None and da.getm.longitude is not None:
+                name2da[name] = da
+        logger.info(
+            f"Detected {len(name2da)} variables to average: {', '.join(name2da)}"
+        )
+    else:
+        for name in variables:
+            name2da[name] = ds[name]
+
+    kwargs.update(logger=logger)
+    datasets: list[xr.Dataset] = []
+    for names, averager in averagers.items():
+        logger.info(f"Averaging {', '.join(names)} with {averager}")
+        das = [name2da.pop(name) for name in names]
+        ds_av = average_variables(domain, das, averager=averager, **kwargs)
+        datasets.append(ds_av)
+    for name, da in name2da.items():
+        logger.info(f"Averaging {name}")
+        ds_av = average_variables(domain, [da], **kwargs)
+        datasets.append(ds_av)
+
+    return xr.merge(datasets, compat="no_conflicts")
+
+
+def average_variables(
+    domain: fabmos.domain.Domain,
+    variables: Iterable[xr.DataArray],
+    *,
+    chunksize: int = 24,
     logger: Optional[logging.Logger] = None,
     averager: Optional[Callable] = None,
     on_grid: bool = False,
@@ -44,21 +81,10 @@ def average(
         lat = domain.full_lat[unmasked]
         cluster_index = cluster_index[unmasked]
 
-    if variables is None:
-        variables = []
-        with xr.open_dataset(infile) as ds:
-            for name, da in ds.items():
-                if da.getm.longitude is not None and da.getm.longitude is not None:
-                    variables.append(name)
-        logger.info(
-            f"Detected {len(variables)} variables to average: {', '.join(variables)}"
-        )
-
     # Create lazy DataArray for each source variable interpolated to the unmasked
     # points of the full domain (1D arrays)
-    name2da = {}
-    for name in variables:
-        da = fabmos.input.from_nc(infile, name)
+    da_ips = []
+    for da in variables:
         if not on_grid:
             da = fabmos.input.limit_region(
                 da,
@@ -72,70 +98,51 @@ def average(
             if not mask.any():
                 mask = None
             else:
-                logger.info(f"Detected {mask.sum()} masked points in {name}")
+                logger.info(f"Detected {mask.sum()} masked points in {da.name}")
             da = fabmos.input.horizontal_interpolation(da, lon, lat, mask=mask)
-        name2da[name] = da
+        da = da.chunk({da.dims[0]: chunksize})
+        da_ips.append(da)
 
     ncluster = domain.nx
-    clusters = []
-    for icluster in range(ncluster):
-        clusters.append((slice(None),) + np.nonzero(cluster_index == icluster))
 
-    with netCDF4.Dataset(infile) as nc, netCDF4.Dataset(outfile, "w") as ncout:
-        nc.set_auto_mask(False)
-        ntime = da.shape[0]
-        timedim = da.getm.time.dims[0]
+    def _average(ncluster, cluster_index, *values, averager: Optional[Callable] = None):
+        if averager is None:
+            averager = lambda *args: tuple(a.mean(axis=-1) for a in args)
+        means = tuple(
+            np.empty(v.shape[:-1] + (1, ncluster), dtype=v.dtype) for v in values
+        )
+        for icluster in range(ncluster):
+            sel = cluster_index == icluster
+            current_values = [np.asarray(v)[..., sel] for v in values]
+            cluster_means = averager(*current_values)
+            for m, cv in zip(means, cluster_means):
+                m[..., 0, icluster] = cv
+        return means if len(means) > 1 else means[0]
 
-        # Dimensions
-        ncout.createDimension("x", ncluster)
-        ncout.createDimension("y", 1)
-        ncout.createDimension(timedim, ntime)
+    logger.info(f"Averaging into {ncluster} clusters...")
+    da_avs = xr.apply_ufunc(
+        _average,
+        ncluster,
+        cluster_index,
+        *da_ips,
+        input_core_dims=[[], da.dims[-1:]] + [da.dims[-1:]] * (len(variables)),
+        output_core_dims=[["y", "x"]] * len(variables),
+        kwargs=dict(averager=averager),
+        dask="parallelized",
+        output_dtypes=[da.dtype] * len(variables),
+        dask_gufunc_kwargs=dict(output_sizes={"y": 1, "x": ncluster}),
+    )
+    if len(variables) == 1:
+        da_avs = (da_avs,)
+    logger.info(f"Chunking and casting...")
+    name2da_av = {}
+    for da_ori, da_av in zip(variables, da_avs):
+        da_av = da_av.chunk({"y": 1, "x": ncluster})
+        da_av.attrs.update(da_ori.attrs)
+        name2da_av[da_ori.name] = da_av.astype("float32")
 
-        # Time coordinate
-        nctime = nc.variables[timedim]
-        nctime_out = ncout.createVariable(timedim, nctime.dtype, (timedim,))
-        nctime_out.units = nctime.units
-        nctime_out.calendar = nctime.calendar
-        nctime_out[:] = nctime[:]
-
-        # Output variables (creation & metadata)
-        ncvars_out = {}
-        for name in name2da:
-            ncvar = nc.variables[name]
-            ncvar_out = ncout.createVariable(name, ncvar.dtype, (timedim, "y", "x"))
-            for k in ncvar.ncattrs():
-                if k != "_FillValue":
-                    setattr(ncvar_out, k, getattr(ncvar, k))
-            ncvars_out[name] = ncvar_out
-
-        # Process time chunks
-        start = timeit.default_timer()
-        remaining = "unknown time"
-        for itime in range(0, ntime, chunksize):
-            # Estimate time remaining
-            time_passed = timeit.default_timer() - start
-            if itime > 0:
-                remaining = f"{time_passed / itime * (ntime - itime):.1f} s"
-            logger.info(
-                f"Processing time={itime}:{itime + chunksize} ({remaining} remaining)"
-            )
-
-            # Read all values for current time slice
-            name2values = {
-                name: da[itime : itime + chunksize].values
-                for name, da in name2da.items()
-            }
-
-            # Calculate means per cluster
-            for icluster, ind in enumerate(clusters):
-                name2cvalues = {n: v[ind] for n, v in name2values.items()}
-                name2mean = {n: v.mean(axis=-1) for n, v in name2cvalues.items()}
-                if averager is not None:
-                    name2mean.update(averager(**name2cvalues))
-                for name, values in name2mean.items():
-                    ncvars_out[name][itime : itime + chunksize, 0, icluster] = values
-
-        logger.info(f"Total time taken: {timeit.default_timer() - start:.1f} s")
+    logger.info(f"Creating dataset...")
+    return xr.Dataset(name2da_av)
 
 
 def get_connectivity(
@@ -187,7 +194,9 @@ def get_connectivity(
                 ncvar = nc.createVariable(dimname, c.encoding["dtype"], c.dims)
                 ncvar.units = c.encoding["units"]
                 ncvar.calendar = c.encoding["calendar"]
-                ncvar[:] = netCDF4.date2num(c, ncvar.units, ncvar.calendar)
+                ncvar[:], _, _ = xr.coding.times.encode_cf_datetime(
+                    c, c.encoding["units"], c.encoding["calendar"], c.encoding["dtype"]
+                )
             else:
                 ncvar = nc.createVariable(dimname, c.dtype, c.dims)
                 for k, v in u_U.attrs():
