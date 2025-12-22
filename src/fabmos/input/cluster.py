@@ -94,7 +94,7 @@ def average_variables(
                 lat.max(),
                 periodic_lon=periodic_lon,
             )
-            mask = ~np.isfinite(da[0, ...].values)
+            mask = np.asarray(~np.isfinite(da[0, ...]))
             if not mask.any():
                 mask = None
             else:
@@ -108,24 +108,30 @@ def average_variables(
     def _average(ncluster, cluster_index, *values, averager: Optional[Callable] = None):
         if averager is None:
             averager = lambda *args: tuple(a.mean(axis=-1) for a in args)
+        n = cluster_index.ndim
         means = tuple(
-            np.empty(v.shape[:-1] + (1, ncluster), dtype=v.dtype) for v in values
+            np.empty(v.shape[:-n] + (1, ncluster), dtype=v.dtype) for v in values
         )
         for icluster in range(ncluster):
             sel = cluster_index == icluster
-            current_values = [np.asarray(v)[..., sel] for v in values]
+            current_values = []
+            for v in values:
+                v = np.asarray(v)
+                s = sel & np.isfinite(v)
+                current_values.append(v[..., s])
             cluster_means = averager(*current_values)
             for m, cv in zip(means, cluster_means):
                 m[..., 0, icluster] = cv
         return means if len(means) > 1 else means[0]
 
     logger.info(f"Averaging into {ncluster} clusters...")
+    n = cluster_index.ndim
     da_avs = xr.apply_ufunc(
         _average,
         ncluster,
         cluster_index,
         *da_ips,
-        input_core_dims=[[], da.dims[-1:]] + [da.dims[-1:]] * (len(variables)),
+        input_core_dims=[[], da.dims[-n:]] + [da.dims[-n:]] * (len(variables)),
         output_core_dims=[["y", "x"]] * len(variables),
         kwargs=dict(averager=averager),
         dask="parallelized",

@@ -450,7 +450,7 @@ def compress_clusters(
 
     logger = full_domain.logger
 
-    to_compress = ("mask", "lon", "lat", "x", "y", "H", "area", "rotation")
+    to_compress = ("mask", "lon", "lat", "x", "y", "H", "area")
     ncluster = None
     cluster_index = None
     global_fields = {}
@@ -475,8 +475,9 @@ def compress_clusters(
         assert clusters.shape == unmasked.shape
         unmasked &= ~np.ma.getmaskarray(clusters)
 
-        # Ensure bathymetry is valid in all unmasked points
-        assert np.isfinite(global_fields["H"][unmasked]).all()
+        if "H" in global_fields:
+            # Ensure bathymetry is valid in all unmasked points
+            assert np.isfinite(global_fields["H"][unmasked]).all()
 
         # Cast clusters to regular array and collect unique cluster identifiers
         clusters = np.asarray(clusters)
@@ -517,7 +518,8 @@ def compress_clusters(
                     f" {compressed_fields['lon'][i]:.6f} °East,"
                     f" {compressed_fields['lat'][i]:.6f} °North"
                 )
-            logger.info(f"    mean depth: {compressed_fields['H'][i]:.1f} m")
+            if "H" in global_fields:
+                logger.info(f"    mean depth: {compressed_fields['H'][i]:.1f} m")
             logger.info(f"    total area: {1e-6 * area:.1f} km2")
 
     domain = pygetm.domain.Domain(
@@ -539,6 +541,7 @@ def compress_clusters(
         domain._area[1, 1::2] = compressed_fields["area"]
         domain._dx[1, 1::2] = np.sqrt(domain._area[1, 1::2])
         domain._dy[1, 1::2] = domain._dx[1, 1::2]
+        domain._rotation = None
         domain.icluster = compressed_fields["i"]
         domain.jcluster = compressed_fields["j"]
         for name in ("x", "y", "lon", "lat"):
