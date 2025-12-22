@@ -203,9 +203,9 @@ class TransportMatrix(pygetm.input.LazyArray):
     ) -> np.ndarray:
         diag_indices = np.empty((indptr.size - 1,), dtype=indptr.dtype)
         for irow, (start, stop) in enumerate(zip(indptr[:-1], indptr[1:])):
-            idiag = (indices[start:stop] == irow).nonzero()[0]
+            (idiag,) = (indices[start:stop] == irow).nonzero()
             assert idiag.size == 1
-            diag_indices[irow] = start + idiag
+            diag_indices[irow] = start + idiag[0]
         return diag_indices
 
     def _get_matrix_metadata(self, fn: str, order: Optional[np.ndarray] = None):
