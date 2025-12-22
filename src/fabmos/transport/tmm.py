@@ -439,7 +439,7 @@ class Simulator(simulator.Simulator):
         # Slice that extracts wet points in TMM order (z = fastest varying dimension)
         # from flattened 3D array in (z,y=1,x) order
         weti, wetk = self.T.mask3d.values[:, 0, :].T.nonzero()
-        self.wet_indices = wetk * self.T.nx + weti
+        self.wet_indices = (wetk * self.T.nx + weti).astype(np.intp)
 
         self.nwet = (self.T.mask3d.values != 0).sum()
         self.counts = np.empty(self.tiling.n, dtype=int)
