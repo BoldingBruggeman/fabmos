@@ -289,7 +289,7 @@ def freeze_vertical_coordinates(
     else:
         # First interface = 0, then decreasing to -sum(hn)
         grid.zf.all_values *= -1.0
-    grid.zc.all_values[...] = 0.5 * (grid.zf.all_values[:-1] + grid.zf.all_values[1:])
+    grid.zc.all_values = 0.5 * (grid.zf.all_values[:-1] + grid.zf.all_values[1:])
     grid.zc.all_values[:, grid._land] = 0.0
     grid.zf.all_values[:, grid._land] = 0.0
     grid.zc._fill_value = 0.0

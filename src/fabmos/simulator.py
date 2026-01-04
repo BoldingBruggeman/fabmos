@@ -59,7 +59,7 @@ class Simulator(pygetm.simulation.BaseSimulation):
         else:
             self.logger.info("3D mask is not defined; inferring from 2D mask")
             self.unmasked3d = self.T.array(z=pygetm.CENTERS, dtype=bool)
-            self.unmasked3d.all_values[...] = self.unmasked2d.all_values
+            self.unmasked3d.all_values = self.unmasked2d.all_values
 
         if self.unmasked3d.values.all():
             self.logger.info("No masked points")
