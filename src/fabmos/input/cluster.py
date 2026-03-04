@@ -13,10 +13,16 @@ import fabmos
 # fabmos.input.debug_nc_reads()
 
 
-def average_uv(u10: npt.ArrayLike, v10: npt.ArrayLike):
-    mean_length = np.hypot(u10, v10).mean(axis=-1)
-    mean_angle = np.arctan2(u10.sum(axis=-1), v10.sum(axis=-1))
+def average_uv(u10: npt.ArrayLike, v10: npt.ArrayLike, *, where=np._NoValue):
+    mean_length = np.hypot(u10, v10).mean(axis=-1, where=where)
+    u10_sum = u10.sum(axis=-1, where=where)
+    v10_sum = v10.sum(axis=-1, where=where)
+    mean_angle = np.arctan2(u10_sum, v10_sum)
     return np.sin(mean_angle) * mean_length, np.cos(mean_angle) * mean_length
+
+
+def default_averager(*args, where=np._NoValue):
+    return tuple(np.mean(a, axis=-1, where=where) for a in args)
 
 
 def average(
@@ -107,7 +113,7 @@ def average_variables(
 
     def _average(ncluster, cluster_index, *values, averager: Optional[Callable] = None):
         if averager is None:
-            averager = lambda *args: tuple(a.mean(axis=-1) for a in args)
+            averager = default_averager
         n = cluster_index.ndim
         means = tuple(
             np.empty(v.shape[:-n] + (1, ncluster), dtype=v.dtype) for v in values
@@ -115,11 +121,12 @@ def average_variables(
         for icluster in range(ncluster):
             sel = cluster_index == icluster
             current_values = []
+            where = True
             for v in values:
-                v = np.asarray(v)
-                s = sel & np.isfinite(v)
-                current_values.append(v[..., s])
-            cluster_means = averager(*current_values)
+                v = np.asarray(v)[..., sel]
+                where &= np.isfinite(v)
+                current_values.append(v)
+            cluster_means = averager(*current_values, where=where)
             for m, cv in zip(means, cluster_means):
                 m[..., 0, icluster] = cv
         return means if len(means) > 1 else means[0]
