@@ -2,7 +2,7 @@ import os
 import functools
 import datetime
 import logging
-from typing import Optional, Tuple, Union, Mapping, Any, List
+from typing import Optional, Union, Mapping, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -102,7 +102,7 @@ def _wrap_ongrid_array(
 class TransportMatrix(pygetm.input.LazyArray):
     def __init__(
         self,
-        file_list: list,
+        file_list: list[str],
         name: str,
         offsets: np.ndarray,
         counts: np.ndarray,
@@ -326,8 +326,8 @@ def _load_mat(
     fn: str,
     *names: str,
     dtype: Optional[npt.DTypeLike] = None,
-    slc: Tuple = (Ellipsis,),
-) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    slc: tuple = (Ellipsis,),
+) -> Union[np.ndarray, tuple[np.ndarray]]:
     if not os.path.isfile(fn):
         raise Exception(f"File {fn} does not exist")
 
@@ -529,8 +529,8 @@ class Simulator(simulator.Simulator):
             )
 
         self.load_environment(periodic_forcing, calendar)
-        self._redistribute: List[
-            Tuple[
+        self._redistribute: list[
+            tuple[
                 Array,
                 Array,
                 Array,
@@ -539,7 +539,7 @@ class Simulator(simulator.Simulator):
                 int,
             ]
         ] = []
-        self._atmospheric_gases: List[Tuple[Array, Array, float, float]] = []
+        self._atmospheric_gases: list[tuple[Array, Array, float, float]] = []
 
         self.tot_area = self.T.area.global_sum(where=self.T.mask == 1, to_all=True)
 
@@ -760,7 +760,7 @@ class Simulator(simulator.Simulator):
 
         def _get_variable(
             path: str, varname: str, **kwargs
-        ) -> Tuple[Array, xr.DataArray]:
+        ) -> tuple[Array, xr.DataArray]:
             array = self.T.array(**kwargs)
             src = get_mat_array(path, varname, self._grid_file, times=times)
             _set(array, src)
