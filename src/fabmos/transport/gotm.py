@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, overload
 import os.path
 import logging
 
@@ -406,7 +406,7 @@ class Simulator(simulator.Simulator):
             self.ssu = self.ssv = self.T.array()
             self.ssu.fill(0.0)
 
-        self.relaxation = []
+        self.relaxation: list[tuple[Array, np.ndarray, Union[float, np.ndarray]]] = []
 
         self.vertical_advection = pygetm.operators.VerticalAdvection(self.T)
         self._w = self.T.array(z=INTERFACES, fill=0.0)
@@ -425,13 +425,24 @@ class Simulator(simulator.Simulator):
         else:
             self.connectivity_matrix = None
 
-    def add_relaxation(self, array: Union[str, Array]) -> Tuple[Array, Array]:
+    @overload
+    def add_relaxation(self, array: Union[str, Array], rate: float) -> Array: ...
+    @overload
+    def add_relaxation(self, array: Union[str, Array]) -> tuple[Array, Array]: ...
+    def add_relaxation(
+        self, array: Union[str, Array], rate: Optional[float] = None
+    ) -> Union[Array, tuple[Array, Array]]:
         if isinstance(array, str):
             array = self[array]
         target = array.grid.array(z=array.z)
-        rate = array.grid.array(z=array.z)
-        self.relaxation.append((array, target, rate))
-        return target, rate
+        if rate is None:
+            rate_ar = array.grid.array(z=array.z)
+            ret = target, rate_ar
+            rate = rate_ar.values
+        else:
+            ret = target
+        self.relaxation.append((array, target.values, rate))
+        return ret
 
     def _update_forcing_and_diagnostics(self, macro_active: bool):
         # Update density and buoyancy to keep them in sync with T and S.
@@ -511,7 +522,7 @@ class Simulator(simulator.Simulator):
 
         self._horizontal_connectivity(timestep)
 
-    def _horizontal_connectivity(self, timestep):
+    def _horizontal_connectivity(self, timestep: float):
         if self.connectivity_matrix is not None:
             scale = timestep / (self.T.D.values * self.T.area.values)
             for tracer in self.tracers:
@@ -519,4 +530,4 @@ class Simulator(simulator.Simulator):
                 tracer.values[:, 0, :] += gains.sum(axis=-2) * scale
 
         for array, target, rate in self.relaxation:
-            array += (target.values - array.values) * (rate.values * timestep)
+            array += (target - array.values) * (rate * timestep)
