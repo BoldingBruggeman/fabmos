@@ -1,6 +1,5 @@
 from typing import Optional, Iterable, Callable, Mapping
 import logging
-import timeit
 
 import netCDF4
 import xarray as xr
@@ -13,16 +12,17 @@ import fabmos
 # fabmos.input.debug_nc_reads()
 
 
-def average_uv(u10: npt.ArrayLike, v10: npt.ArrayLike, *, where=np._NoValue):
-    mean_length = np.hypot(u10, v10).mean(axis=-1, where=where)
-    u10_sum = u10.sum(axis=-1, where=where)
-    v10_sum = v10.sum(axis=-1, where=where)
-    mean_angle = np.arctan2(u10_sum, v10_sum)
+def average_uv(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    where = np.isfinite(u) & np.isfinite(v)
+    mean_length = np.hypot(u, v).mean(axis=-1, where=where)
+    u_sum = u.sum(axis=-1, where=where)
+    v_sum = v.sum(axis=-1, where=where)
+    mean_angle = np.arctan2(u_sum, v_sum)
     return np.sin(mean_angle) * mean_length, np.cos(mean_angle) * mean_length
 
 
-def default_averager(*args, where=np._NoValue):
-    return tuple(np.mean(a, axis=-1, where=where) for a in args)
+def default_averager(*args: np.ndarray) -> tuple[np.ndarray, ...]:
+    return tuple(a.mean(axis=-1, where=np.isfinite(a)) for a in args)
 
 
 def average(
@@ -101,7 +101,7 @@ def average_variables(
                 periodic_lon=periodic_lon,
             )
             mask = np.asarray(~np.isfinite(da[0, ...]))
-            if not mask.any():
+            if not mask.any() or da.ndim > 3:
                 mask = None
             else:
                 logger.info(f"Detected {mask.sum()} masked points in {da.name}")
@@ -120,13 +120,8 @@ def average_variables(
         )
         for icluster in range(ncluster):
             sel = cluster_index == icluster
-            current_values = []
-            where = True
-            for v in values:
-                v = np.asarray(v)[..., sel]
-                where &= np.isfinite(v)
-                current_values.append(v)
-            cluster_means = averager(*current_values, where=where)
+            current_values = [np.asarray(v)[..., sel] for v in values]
+            cluster_means = averager(*current_values)
             for m, cv in zip(means, cluster_means):
                 m[..., 0, icluster] = cv
         return means if len(means) > 1 else means[0]
