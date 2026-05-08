@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, Optional, Tuple, Union, TYPE_CHECKING
 import functools
 
 import numpy as np
@@ -7,9 +7,13 @@ import xarray as xr
 
 import pygetm
 from pygetm.domain import *
-from pygetm import CENTERS, INTERFACES
+from pygetm import CENTERS, INTERFACES, CoordinateType
 
 from . import Array, Grid
+
+if TYPE_CHECKING:
+    import matplotlib.figure
+    import matplotlib.colors
 
 
 class map_input_to_compressed_grid:
@@ -189,7 +193,7 @@ class CompressedToFullDomain(pygetm.output.operators.UnivariateTransformWithData
 
     @property
     def coords(self):
-        if self._target_domain.coordinate_type == pygetm.CoordinateType.LONLAT:
+        if self._target_domain.coordinate_type == CoordinateType.LONLAT:
             x, y = self._target_domain.lon, self._target_domain.lat
         else:
             x, y = self._target_domain.x, self._target_domain.y
@@ -430,184 +434,268 @@ class ClusterConnections:
         return out
 
 
-def compress_clusters(
-    full_domain: Optional[Domain],
-    clusters: npt.ArrayLike,
-    decompress_output: bool = False,
-) -> Domain:
-    """Compress domain by merging grid cells with the same cluster value.
+class ClusteredDomain(Domain):
+    def __init__(
+        self,
+        full_domain: Optional[Domain],
+        clusters: npt.ArrayLike,
+        decompress_output: bool = False,
+    ):
+        """Compress domain by merging grid cells with the same cluster value.
 
-    Grid cells that are masked in the full domain or that have a masked cluster
-    value will be excluded.
-    Coordinates per cluster (x, y, lon, lat) are taken from the grid cell in
-    the cluster that is closed to the cluster mean. Bathymetric depths will
-    equal the mean over the cluster. Surface areas will equal the sum over the
-    cluster.
-    The resulting domain will have ny=1 and nx=number of clusters.
-    """
-    clusters = np.ma.asarray(clusters)
-    assert clusters.shape == (full_domain.ny, full_domain.nx)
+        Grid cells that are masked in the full domain or that have a masked cluster
+        value will be excluded.
+        Coordinates per cluster (x, y, lon, lat) are taken from the grid cell in
+        the cluster that is closed to the cluster mean. Bathymetric depths will
+        equal the mean over the cluster. Surface areas will equal the sum over the
+        cluster.
+        The resulting domain will have ny=1 and nx=number of clusters.
+        """
+        clusters = np.ma.asarray(clusters)
+        assert clusters.shape == (full_domain.ny, full_domain.nx)
 
-    logger = full_domain.logger
+        logger = full_domain.logger
 
-    to_compress = ("mask", "lon", "lat", "x", "y", "H", "area")
-    ncluster = None
-    cluster_index = None
-    global_fields = {}
-    compressed_fields = {}
-    if full_domain.comm.rank == 0:
-        # Collect fields from full domain that will be averaged over clusters
-        # For longitude, use cos and sin to handle periodic boundary condition
-        for name in to_compress:
-            source = getattr(full_domain, "_" + name)
-            if source is not None:
-                global_fields[name] = source[1::2, 1::2]
-        if "lon" in global_fields:
-            lon_rad = np.pi * global_fields["lon"] / 180.0
-            global_fields["coslon"] = np.cos(lon_rad)
-            global_fields["sinlon"] = np.sin(lon_rad)
-        global_fields["j"], global_fields["i"] = np.indices(
-            (full_domain.ny, full_domain.nx), dtype=float
-        )
-
-        # Mask combines original domain mask and cluster mask (if any)
-        unmasked = global_fields["mask"] != 0
-        assert clusters.shape == unmasked.shape
-        unmasked &= ~np.ma.getmaskarray(clusters)
-
-        if "H" in global_fields:
-            # Ensure bathymetry is valid in all unmasked points
-            assert np.isfinite(global_fields["H"][unmasked]).all()
-
-        # Cast clusters to regular array and collect unique cluster identifiers
-        clusters = np.asarray(clusters)
-        unique_clusters = np.unique(clusters[unmasked])
-        ncluster = unique_clusters.size
-        logger.info(f"Found {ncluster} unique clusters:")
-
-        cluster_index = np.full(clusters.shape, -1, dtype=np.int16)
-        for i, v in enumerate(unique_clusters):
-            cluster_index[(clusters == v) & unmasked] = i
-
-        # Prepare arrays for compressed (= per-cluster) domain fields
-        for name, values in global_fields.items():
-            compressed_fields[name] = np.empty((ncluster,), dtype=values.dtype)
-
-        for i, c in enumerate(unique_clusters):
-            selected = cluster_index == i
-
-            # Average over cluster (or in the case of surface area: sum)
-            cluster_values = {}
-            for name, values in global_fields.items():
-                cluster_values[name] = values[selected]
-                compressed_fields[name][i] = cluster_values[name].mean()
-            area = cluster_values["area"].sum()
-            compressed_fields["area"][i] = area
+        to_compress = ("mask", "lon", "lat", "x", "y", "H", "area")
+        ncluster = None
+        cluster_index = None
+        global_fields = {}
+        compressed_fields = {}
+        if full_domain.comm.rank == 0:
+            # Collect fields from full domain that will be averaged over clusters
+            # For longitude, use cos and sin to handle periodic boundary condition
+            for name in to_compress:
+                source = getattr(full_domain, "_" + name)
+                if source is not None:
+                    global_fields[name] = source[1::2, 1::2]
             if "lon" in global_fields:
-                compressed_fields["lon"] = (
-                    np.arctan2(compressed_fields["sinlon"], compressed_fields["coslon"])
-                    / np.pi
-                    * 180
-                )
+                lon_rad = np.pi * global_fields["lon"] / 180.0
+                global_fields["coslon"] = np.cos(lon_rad)
+                global_fields["sinlon"] = np.sin(lon_rad)
+            global_fields["j"], global_fields["i"] = np.indices(
+                (full_domain.ny, full_domain.nx), dtype=float
+            )
 
-            logger.info(f"  {c}:")
-            logger.info(f"    cell count: {selected.sum()}")
-            if "lon" in global_fields and "lat" in global_fields:
-                logger.info(
-                    "    mean coordinates:"
-                    f" {compressed_fields['lon'][i]:.6f} °East,"
-                    f" {compressed_fields['lat'][i]:.6f} °North"
-                )
+            # Mask combines original domain mask and cluster mask (if any)
+            unmasked = global_fields["mask"] != 0
+            assert clusters.shape == unmasked.shape
+            unmasked &= ~np.ma.getmaskarray(clusters)
+
             if "H" in global_fields:
-                logger.info(f"    mean depth: {compressed_fields['H'][i]:.1f} m")
-            logger.info(f"    total area: {1e-6 * area:.1f} km2")
+                # Ensure bathymetry is valid in all unmasked points
+                assert np.isfinite(global_fields["H"][unmasked]).all()
 
-    domain = pygetm.domain.Domain(
-        nx=full_domain.comm.bcast(ncluster),
-        ny=1,
-        x=compressed_fields.get("x"),
-        y=compressed_fields.get("y"),
-        lon=compressed_fields.get("lon"),
-        lat=compressed_fields.get("lat"),
-        mask=1,
-        H=compressed_fields.get("H"),
-        coordinate_type=pygetm.CoordinateType.IJ,
-        logger=full_domain.root_logger,
-        comm=full_domain.comm,
-    )
+            # Cast clusters to regular array and collect unique cluster identifiers
+            clusters = np.asarray(clusters)
+            unique_clusters = np.unique(clusters[unmasked])
+            ncluster = unique_clusters.size
+            logger.info(f"Found {ncluster} unique clusters:")
 
-    if domain.comm.rank == 0:
-        domain.full_cluster_index = cluster_index
-        domain._area[1, 1::2] = compressed_fields["area"]
-        domain._dx[1, 1::2] = np.sqrt(domain._area[1, 1::2])
-        domain._dy[1, 1::2] = domain._dx[1, 1::2]
-        domain._rotation = None
-        domain.icluster = compressed_fields["i"]
-        domain.jcluster = compressed_fields["j"]
-        for name in ("x", "y", "lon", "lat"):
-            source = getattr(full_domain, name)
-            if source is not None:
-                setattr(domain, "_{name}_full", source[1::2, 1::2])
+            cluster_index = np.full(clusters.shape, -1, dtype=np.int16)
+            for i, v in enumerate(unique_clusters):
+                cluster_index[(clusters == v) & unmasked] = i
 
-        if decompress_output:
-            tf = functools.partial(
-                ClustersToFullGrid,
-                grid=full_domain.T,
-                clusters=[cluster_index == i for i in range(len(unique_clusters))],
-            )
-            domain.default_output_transforms.append(tf)
-        else:
-            domain.extra_output_coordinates = []
-            dims = ("y", "x")
-            dims_ = (dims[0] + "_", dims[1] + "_")
-            domain.extra_output_coordinates.append(
-                pygetm.output.operators.WrappedArray(
-                    cluster_index, "cluster_index", dims_, fill_value=-1
-                )
-            )
-            for name in ("x", "y", "lon", "lat"):
-                if name in global_fields:
-                    info = Grid._array_args[name]
-                    attrs = {
-                        k: v for k, v in info["attrs"].items() if not k.startswith("_")
-                    }
-                    attrs.update(units=info["units"], long_name=info["long_name"])
-                    domain.extra_output_coordinates.append(
-                        pygetm.output.operators.WrappedArray(
-                            global_fields[name], name + "_", dims_, attrs=attrs
+            # Prepare arrays for compressed (= per-cluster) domain fields
+            for name, values in global_fields.items():
+                compressed_fields[name] = np.empty((ncluster,), dtype=values.dtype)
+
+            for i, c in enumerate(unique_clusters):
+                selected = cluster_index == i
+
+                # Average over cluster (or in the case of surface area: sum)
+                cluster_values = {}
+                for name, values in global_fields.items():
+                    cluster_values[name] = values[selected]
+                    compressed_fields[name][i] = cluster_values[name].mean()
+                area = cluster_values["area"].sum()
+                compressed_fields["area"][i] = area
+                if "lon" in global_fields:
+                    compressed_fields["lon"] = (
+                        np.arctan2(
+                            compressed_fields["sinlon"], compressed_fields["coslon"]
                         )
+                        / np.pi
+                        * 180
                     )
-            domain.extra_output_coordinates.append(
-                pygetm.output.operators.WrappedArray(
-                    compressed_fields["i"], "icluster", ("x",)
-                )
-            )
-            domain.extra_output_coordinates.append(
-                pygetm.output.operators.WrappedArray(
-                    compressed_fields["j"], "jcluster", ("x",)
-                )
-            )
-            domain.extra_output_coordinates.append(
-                pygetm.output.operators.WrappedArray(unique_clusters, "cluster", ("x",))
-            )
-        domain.full_mask = np.where(unmasked, 1, 0)
-        domain.cluster_ids = unique_clusters
-        for name in ("x", "y", "lon", "lat"):
-            if name in global_fields:
-                setattr(domain, f"full_{name}", global_fields[name])
 
-        domain.connections = ClusterConnections(full_domain, cluster_index, ncluster)
-        interfaces = domain.connections(
-            full_domain._dy[1::2, 2:-1:2], full_domain._dx[2:-1:2, 1::2]
-        )
-        interfaces += interfaces.T
-        domain.interfaces = interfaces
+                logger.info(f"  {c}:")
+                logger.info(f"    cell count: {selected.sum()}")
+                if "lon" in global_fields and "lat" in global_fields:
+                    logger.info(
+                        "    mean coordinates:"
+                        f" {compressed_fields['lon'][i]:.6f} °East,"
+                        f" {compressed_fields['lat'][i]:.6f} °North"
+                    )
+                if "H" in global_fields:
+                    logger.info(f"    mean depth: {compressed_fields['H'][i]:.1f} m")
+                logger.info(f"    total area: {1e-6 * area:.1f} km2")
 
-    domain.input_grid_mappers.append(
-        functools.partial(
-            map_input_to_cluster_grid,
-            cluster_index=domain.comm.bcast(cluster_index),
-            bath=domain.comm.bcast(global_fields.get("H")),
+            # Ensure that all rivers are mapped to a grid point in the original domain
+            final_mask = full_domain.get_final_mask()
+            full_domain.rivers.map_to_grid(
+                pygetm.core.Locator(**full_domain._tcoords(mask=final_mask))
+            )
+
+        super().__init__(
+            nx=full_domain.comm.bcast(ncluster),
+            ny=1,
+            x=compressed_fields.get("x"),
+            y=compressed_fields.get("y"),
+            lon=compressed_fields.get("lon"),
+            lat=compressed_fields.get("lat"),
+            mask=1,
+            H=compressed_fields.get("H"),
+            coordinate_type=CoordinateType.IJ,
+            logger=full_domain.root_logger,
+            comm=full_domain.comm,
         )
-    )
-    return domain
+
+        for name, r in full_domain.rivers.items():
+            self.rivers.add_by_index(name, i=cluster_index[r.j, r.i], j=0, **r.attrs)
+
+        if self.comm.rank == 0:
+            self.full_cluster_index = cluster_index
+            self._area[1, 1::2] = compressed_fields["area"]
+            self._dx[1, 1::2] = np.sqrt(self._area[1, 1::2])
+            self._dy[1, 1::2] = self._dx[1, 1::2]
+            self._rotation = None
+            self.icluster = compressed_fields["i"]
+            self.jcluster = compressed_fields["j"]
+            for name in ("x", "y", "lon", "lat"):
+                source = getattr(full_domain, name)
+                if source is not None:
+                    setattr(self, f"_{name}_full", source[1::2, 1::2])
+
+            if decompress_output:
+                tf = functools.partial(
+                    ClustersToFullGrid,
+                    grid=full_domain.T,
+                    clusters=[cluster_index == i for i in range(len(unique_clusters))],
+                )
+                self.default_output_transforms.append(tf)
+            else:
+                self.extra_output_coordinates = []
+                dims = ("y", "x")
+                dims_ = (dims[0] + "_", dims[1] + "_")
+                self.extra_output_coordinates.append(
+                    pygetm.output.operators.WrappedArray(
+                        cluster_index, "cluster_index", dims_, fill_value=-1
+                    )
+                )
+                for name in ("x", "y", "lon", "lat"):
+                    if name in global_fields:
+                        info = Grid._array_args[name]
+                        attrs = {
+                            k: v
+                            for k, v in info["attrs"].items()
+                            if not k.startswith("_")
+                        }
+                        attrs.update(units=info["units"], long_name=info["long_name"])
+                        self.extra_output_coordinates.append(
+                            pygetm.output.operators.WrappedArray(
+                                global_fields[name], name + "_", dims_, attrs=attrs
+                            )
+                        )
+                self.extra_output_coordinates.append(
+                    pygetm.output.operators.WrappedArray(
+                        compressed_fields["i"], "icluster", ("x",)
+                    )
+                )
+                self.extra_output_coordinates.append(
+                    pygetm.output.operators.WrappedArray(
+                        compressed_fields["j"], "jcluster", ("x",)
+                    )
+                )
+                self.extra_output_coordinates.append(
+                    pygetm.output.operators.WrappedArray(
+                        unique_clusters, "cluster", ("x",)
+                    )
+                )
+            self.full_mask = np.where(unmasked, 1, 0)
+            self.cluster_ids = unique_clusters
+            for name in ("x", "y", "lon", "lat", "area"):
+                if name in global_fields:
+                    setattr(self, f"full_{name}", global_fields[name])
+
+            self.connections = ClusterConnections(full_domain, cluster_index, ncluster)
+            interfaces = self.connections(
+                full_domain._dy[1::2, 2:-1:2], full_domain._dx[2:-1:2, 1::2]
+            )
+            interfaces += interfaces.T
+            self.interfaces = interfaces
+
+        self.input_grid_mappers.append(
+            functools.partial(
+                map_input_to_cluster_grid,
+                cluster_index=self.comm.bcast(cluster_index),
+                bath=self.comm.bcast(global_fields.get("H")),
+            )
+        )
+
+    def plot(
+        self,
+        field: Optional[np.ndarray] = None,
+        *,
+        fig: Optional["matplotlib.figure.Figure"] = None,
+        coordinate_type: Optional[CoordinateType] = None,
+        label: Optional[str] = None,
+        cmap: Union[None, "matplotlib.colors.Colormap", str] = None,
+    ) -> "matplotlib.figure.Figure":
+        ny, nx = self.full_cluster_index.shape
+        if coordinate_type is None:
+            coordinate_type = self.coordinate_type
+        if coordinate_type == CoordinateType.LONLAT:
+            x, y = (self.full_lon[::2, ::2], self.full_lat[::2, ::2])
+            xlabel, ylabel = "longitude (°East)", "latitude (°North)"
+        elif coordinate_type == CoordinateType.XY:
+            x, y = (self.full_x[::2, ::2], self.full_y[::2, ::2])
+            xlabel, ylabel = "x (m)", "y (m)"
+        else:
+            x = -0.5 + 0.5 * np.arange(1 + nx)
+            y = -0.5 + 0.5 * np.arange(1 + ny)
+            x, y = np.broadcast_arrays(x, y[:, np.newaxis])
+            xlabel, ylabel = "cell index", "cell index"
+
+        import matplotlib.pyplot as plt
+
+        if fig is None:
+            fig, ax = plt.subplots(figsize=(0.15 * nx, 0.15 * ny))
+        else:
+            ax = fig.gca()
+
+        if field is None:
+            field = self._H[1::2, 1::2]
+            label = "undisturbed water depth (m)"
+
+            if cmap is None:
+                import cmocean
+
+                cmap = cmocean.cm.deep
+                cmap.set_bad("gray")
+
+        elif field.ndim == 1:
+            field = field[np.newaxis, :]
+        assert field.shape == (self.ny, self.nx)
+        full_values = np.ma.array(
+            field[0, self.full_cluster_index], mask=self.full_mask == 0
+        )
+        pc = ax.pcolormesh(x, y, full_values, cmap=cmap)
+        cb = fig.colorbar(pc)
+        if label is not None:
+            cb.set_label(label)
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        if coordinate_type != CoordinateType.LONLAT:
+            ax.axis("equal")
+        xmin, xmax = np.nanmin(x), np.nanmax(x)
+        ymin, ymax = np.nanmin(y), np.nanmax(y)
+        xmargin = 0.05 * (xmax - xmin)
+        ymargin = 0.05 * (ymax - ymin)
+        ax.set_xlim(xmin - xmargin, xmax + xmargin)
+        ax.set_ylim(ymin - ymargin, ymax + ymargin)
+
+        return fig
+
+
+compress_clusters = ClusteredDomain
