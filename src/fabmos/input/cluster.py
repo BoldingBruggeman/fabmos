@@ -8,21 +8,32 @@ import numpy.typing as npt
 
 import fabmos
 
-
 # fabmos.input.debug_nc_reads()
 
 
-def average_uv(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def average_uv(
+    weights: np.ndarray, u: np.ndarray, v: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     where = np.isfinite(u) & np.isfinite(v)
-    mean_length = np.hypot(u, v).mean(axis=-1, where=where)
-    u_sum = u.sum(axis=-1, where=where)
-    v_sum = v.sum(axis=-1, where=where)
+    w_all = np.broadcast_to(weights, where.shape)
+    wsum = w_all.sum(axis=-1, where=where, keepdims=True)
+    relw = w_all / np.where(wsum == 0, 1, wsum)
+    mean_length = (np.hypot(u, v) * relw).sum(axis=-1, where=where)
+    u_sum = (u * relw).sum(axis=-1, where=where)
+    v_sum = (v * relw).sum(axis=-1, where=where)
     mean_angle = np.arctan2(u_sum, v_sum)
     return np.sin(mean_angle) * mean_length, np.cos(mean_angle) * mean_length
 
 
-def default_averager(*args: np.ndarray) -> tuple[np.ndarray, ...]:
-    return tuple(a.mean(axis=-1, where=np.isfinite(a)) for a in args)
+def default_averager(weights: np.ndarray, *args: np.ndarray) -> tuple[np.ndarray, ...]:
+    means = []
+    for a in args:
+        where = np.isfinite(a)
+        w_all = np.broadcast_to(weights, where.shape)
+        wsum = w_all.sum(axis=-1, where=where, keepdims=True)
+        relw = w_all / np.where(wsum == 0, 1, wsum)
+        means.append((a * relw).sum(axis=-1, where=where))
+    return tuple(means)
 
 
 def average(
@@ -71,11 +82,13 @@ def average_variables(
     variables: Iterable[xr.DataArray],
     *,
     chunksize: int = 24,
+    chunkdim: Optional[str] = None,
     logger: Optional[logging.Logger] = None,
     averager: Optional[Callable] = None,
     on_grid: bool = False,
     periodic_lon: bool = False,
 ):
+    assert variables, "No variables to average"
     if logger is None:
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger()
@@ -91,6 +104,7 @@ def average_variables(
     # points of the full domain (1D arrays)
     da_ips = []
     for da in variables:
+        cd = da.getm.time.dims[0] if chunkdim is None else chunkdim
         if not on_grid:
             da = fabmos.input.limit_region(
                 da,
@@ -100,18 +114,20 @@ def average_variables(
                 lat.max(),
                 periodic_lon=periodic_lon,
             )
-            mask = np.asarray(~np.isfinite(da[0, ...]))
+            mask = np.asarray(~np.isfinite(da.isel({cd: 0})))
             if not mask.any() or da.ndim > 3:
                 mask = None
             else:
                 logger.info(f"Detected {mask.sum()} masked points in {da.name}")
             da = fabmos.input.horizontal_interpolation(da, lon, lat, mask=mask)
-        da = da.chunk({da.dims[0]: chunksize})
+        da = da.chunk({cd: chunksize})
         da_ips.append(da)
 
     ncluster = domain.nx
 
-    def _average(ncluster, cluster_index, *values, averager: Optional[Callable] = None):
+    def _average(
+        ncluster, cluster_index, weights, *values, averager: Optional[Callable] = None
+    ):
         if averager is None:
             averager = default_averager
         n = cluster_index.ndim
@@ -121,7 +137,8 @@ def average_variables(
         for icluster in range(ncluster):
             sel = cluster_index == icluster
             current_values = [np.asarray(v)[..., sel] for v in values]
-            cluster_means = averager(*current_values)
+            current_weights = weights[..., sel]
+            cluster_means = averager(current_weights, *current_values)
             for m, cv in zip(means, cluster_means):
                 m[..., 0, icluster] = cv
         return means if len(means) > 1 else means[0]
@@ -132,8 +149,10 @@ def average_variables(
         _average,
         ncluster,
         cluster_index,
+        domain.full_area[unmasked],
         *da_ips,
-        input_core_dims=[[], da.dims[-n:]] + [da.dims[-n:]] * (len(variables)),
+        input_core_dims=[[], da.dims[-n:], da.dims[-n:]]
+        + [da.dims[-n:]] * (len(variables)),
         output_core_dims=[["y", "x"]] * len(variables),
         kwargs=dict(averager=averager),
         dask="parallelized",
