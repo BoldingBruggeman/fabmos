@@ -410,6 +410,8 @@ class ClusterConnections:
         self.length_v = domain.dx[2:-1:2, 1::2][vconnection]
 
         if domain.rotation is not None:
+            # To support rotation of eastward u and northward v to
+            # to grid-centric (along-row and along-column) directions
             self.rotator_u = pygetm.core.Rotator(
                 domain.rotation[1::2, 2:-1:2][uconnection]
             )
@@ -418,14 +420,31 @@ class ClusterConnections:
             )
 
     def __call__(self, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+        """Sum quantities defined on the interfaces between clusters (e.g., fluxes).
+        These quantities must be provided separately for the u interfaces (separating
+        columns) and v interfaces (separating rows). They can be defined on the
+        original U and V grids, or already on the subsets of interfaces that separate
+        clusters (that is, U[self.uconnection] and V[self.vconnection]).
+
+        The result will be an array of shape (..., n, n), where n is the number of
+        clusters, with values at (..., j, i) representing the sum of all positive
+        contributions of the provided quantity between cluster j and i. Conversely,
+        (..., i, j) will represent minus the sum of all negative contributions between
+        cluster i and j. Thus, all entries in the connection matrix will be positive.
+        If the inputs are fluxes (positive for flow in x- and y-direction), then the
+        result will be a matrix (..., isource, itarget) with total fluxes from cluster
+        isource to cluster itarget.
+        """
         u = np.asarray(u)
         v = np.asarray(v)
-        if u.shape[-2:] == (self.ny, self.nx - 1):
+        if u.shape[-2] == self.ny and u.shape[-1] in (self.nx - 1, self.nx):
             # u and v on original grid (2D); extract relevant interfaces (1D)
-            assert v.shape[-2:] == (self.ny - 1, self.nx)
+            assert v.shape[-1] == self.nx and v.shape[-2] in (self.ny - 1, self.ny)
             assert u.shape[:-2] == v.shape[:-2]
             u = u[self.uconnection]
             v = v[self.vconnection]
+        assert u.shape[-1] == self.lon_u.size
+        assert v.shape[-1] == self.lon_v.size
         out = np.zeros(u.shape[:-1] + (self.n, self.n), dtype=u.dtype)
         np.add.at(out, self.uslice, np.maximum(u, 0.0))
         np.add.at(out, self.uslice_rev, -np.minimum(u, 0.0))

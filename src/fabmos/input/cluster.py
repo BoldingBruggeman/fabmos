@@ -173,24 +173,47 @@ def average_variables(
 
 
 def get_connectivity(
-    domain,
+    domain: fabmos.domain.ClusteredDomain,
     u: xr.DataArray,
     v: xr.DataArray,
     outfile: str,
     periodic_lon: bool = False,
     depth_integrate: bool = True,
     logger: Optional[logging.Logger] = None,
+    on_grid: bool = False,
 ):
+    """Compute time-varying connectivity matrix from u and v velocity fields
+    and save this to a NetCDF file. Interpolate and rotate velocities
+    to the native grid first if needed (i.e., if on_grid=False).
+
+    Args:
+        domain: target domain that defines the grid and clusters for which to
+            compute connectivity
+        u: x-velocity on the native (pre-clustering) U grid (if on_grid=False)
+            or eastward velocity (if on_grid=True)
+        v: y-velocity on the native (pre-clustering) V grid (if on_grid=False)
+            or northward velocity (if on_grid=True)
+        outfile: Path to output NetCDF file
+        periodic_lon: Whether to treat longitude as periodic when interpolating
+        depth_integrate: Whether to integrate connectivity vertically (True)
+            or keep it as a function of depth (False)
+        logger: Optional logger for progress messages
+        on_grid: Whether u and v are already on the native grid (True)
+            or need to be interpolated and rotated (False)
+    """
     if logger is None:
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger()
 
     depth = u.getm.z.values
+    assert depth.ndim == 1, "Expected 1D depth coordinate"
+    assert (depth[1:] > depth[:-1]).all(), "Depth must be monotonically increasing"
 
     depth_if = np.zeros_like(depth, shape=(depth.size + 1,))
     depth_if[-1] = depth[-1]
     depth_if[1:-1] = 0.5 * (depth[:-1] + depth[1:])
     dz = depth_if[1:] - depth_if[:-1]
+    depthdim = u.getm.z.dims[0]
 
     def interpolate(values: xr.DataArray, lon: np.ndarray, lat: np.ndarray):
         values = fabmos.input.limit_region(
@@ -203,20 +226,33 @@ def get_connectivity(
         )
         return fabmos.input.horizontal_interpolation(values, lon, lat)
 
-    u_U = interpolate(u, domain.connections.lon_u, domain.connections.lat_u)
-    u_V = interpolate(u, domain.connections.lon_v, domain.connections.lat_v)
-    v_U = interpolate(v, domain.connections.lon_u, domain.connections.lat_u)
-    v_V = interpolate(v, domain.connections.lon_v, domain.connections.lat_v)
+    if on_grid:
+        ny, nx = domain.full_mask.shape
+        assert u.shape[-2:] == (
+            ny,
+            nx,
+        ), f"Expected u shape (..., {ny}, {nx}), got {u.shape}"
+        assert v.shape[-2:] == (
+            ny,
+            nx,
+        ), f"Expected v shape (..., {ny}, {nx}), got {v.shape}"
+    else:
+        u_U = interpolate(u, domain.connections.lon_u, domain.connections.lat_u)
+        u_V = interpolate(u, domain.connections.lon_v, domain.connections.lat_v)
+        v_U = interpolate(v, domain.connections.lon_u, domain.connections.lat_u)
+        v_V = interpolate(v, domain.connections.lon_v, domain.connections.lat_v)
 
     logger.info(f"Creating {outfile}...")
     with netCDF4.Dataset(outfile, "w") as nc:
         nc.createDimension("source", domain.nx)
         nc.createDimension("target", domain.nx)
-        extra_dims = 1 if depth_integrate else 2
-        for idim in range(extra_dims):
-            dimname = u_U.dims[idim]
-            nc.createDimension(dimname, u_U.shape[idim])
-            c = u_U.coords[dimname]
+        extra_dims = []
+        for idim, dimname in enumerate(u.dims[:-2]):
+            if depth_integrate and dimname == depthdim:
+                continue
+            extra_dims.append(dimname)
+            nc.createDimension(dimname, u.shape[idim])
+            c = u.coords[dimname]
             if dimname == "time":
                 ncvar = nc.createVariable(dimname, c.encoding["dtype"], c.dims)
                 ncvar.units = c.encoding["units"]
@@ -226,26 +262,38 @@ def get_connectivity(
                 )
             else:
                 ncvar = nc.createVariable(dimname, c.dtype, c.dims)
-                for k, v in u_U.attrs():
-                    setattr(ncvar, k, v)
+                for key, val in c.attrs.items():
+                    setattr(ncvar, key, val)
                 ncvar[:] = c
         ncvar = nc.createVariable(
-            "exchange", float, (u_U.dims[:extra_dims] + ("source", "target"))
+            "exchange", float, tuple(extra_dims) + ("source", "target")
         )
         ncvar.long_name = "horizontal exchange"
         ncvar.units = "m3 s-1" if depth_integrate else "m2 s-1"
-        ntime = u_U.shape[0]
+        ntime = u.shape[0]
         for itime in range(ntime):
             logger.info(f"  Saving connectivity for time {itime} of {ntime}...")
-            u, _ = domain.connections.rotator_u(u_U[itime, ...], v_U[itime, ...])
-            _, v = domain.connections.rotator_v(u_V[itime, ...], v_V[itime, ...])
-            u = u.fillna(0.0) * domain.connections.length_u
-            v = v.fillna(0.0) * domain.connections.length_v
-            flow_across = domain.connections(u, v)  # m2 s-1
+            if on_grid:
+                u_cur = u[itime].values[domain.connections.uconnection]
+                v_cur = v[itime].values[domain.connections.vconnection]
+            else:
+                # Velocities were interpolated to grid. Assume they were
+                # originally eastward and northward and rotate them back
+                # to grid (i.e., along- and across-connection)
+                u_cur, _ = domain.connections.rotator_u(u_U[itime], v_U[itime])
+                _, v_cur = domain.connections.rotator_v(u_V[itime], v_V[itime])
+
+            # Velocity integrated along horizontal interfaces between clusters (m2 s-1)
+            u_cur = np.nan_to_num(u_cur) * domain.connections.length_u
+            v_cur = np.nan_to_num(v_cur) * domain.connections.length_v
+            flow_across = domain.connections(u_cur, v_cur)
+
             if depth_integrate:
                 flow_across = (flow_across * dz[:, np.newaxis, np.newaxis]).sum(axis=0)
+            inflow = flow_across.sum(axis=-2)
+            outflow = flow_across.sum(axis=-1)
             i = np.arange(domain.nx)
-            flow_across[..., i, i] = -flow_across.sum(axis=-2)
+            flow_across[..., i, i] = -inflow
             ncvar[itime, ...] = flow_across
 
 
