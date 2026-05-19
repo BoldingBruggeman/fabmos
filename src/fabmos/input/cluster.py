@@ -1,4 +1,5 @@
-from typing import Optional, Iterable, Callable, Mapping
+import os
+from typing import Optional, Iterable, Callable, Mapping, Union
 import logging
 
 import netCDF4
@@ -39,7 +40,7 @@ def default_averager(weights: np.ndarray, *args: np.ndarray) -> tuple[np.ndarray
 def average(
     domain: fabmos.domain.Domain,
     ds: xr.Dataset,
-    outfile: str,
+    outfile: Union[str, os.PathLike],
     *,
     variables: Optional[Iterable[str]] = None,
     logger: Optional[logging.Logger] = None,
@@ -53,7 +54,7 @@ def average(
     name2da: dict[str, xr.DataArray] = {}
     if variables is None:
         for name, da in ds.items():
-            if da.getm.longitude is not None and da.getm.longitude is not None:
+            if da.getm.longitude is not None and da.getm.latitude is not None:
                 name2da[name] = da
         logger.info(
             f"Detected {len(name2da)} variables to average: {', '.join(name2da)}"
@@ -94,15 +95,18 @@ def average_variables(
         logger = logging.getLogger()
 
     cluster_index = domain.full_cluster_index
+    area = domain.full_area
     if not on_grid:
         unmasked = domain.full_mask == 1
         lon = domain.full_lon[unmasked]
         lat = domain.full_lat[unmasked]
         cluster_index = cluster_index[unmasked]
+        area = area[unmasked]
 
     # Create lazy DataArray for each source variable interpolated to the unmasked
     # points of the full domain (1D arrays)
     da_ips = []
+    variables = list(variables)
     for da in variables:
         cd = da.getm.time.dims[0] if chunkdim is None else chunkdim
         if not on_grid:
@@ -149,7 +153,7 @@ def average_variables(
         _average,
         ncluster,
         cluster_index,
-        domain.full_area[unmasked],
+        area,
         *da_ips,
         input_core_dims=[[], da.dims[-n:], da.dims[-n:]]
         + [da.dims[-n:]] * (len(variables)),
@@ -161,14 +165,14 @@ def average_variables(
     )
     if len(variables) == 1:
         da_avs = (da_avs,)
-    logger.info(f"Chunking and casting...")
+    logger.info("Chunking and casting...")
     name2da_av = {}
     for da_ori, da_av in zip(variables, da_avs):
         da_av = da_av.chunk({"y": 1, "x": ncluster})
         da_av.attrs.update(da_ori.attrs)
         name2da_av[da_ori.name] = da_av.astype("float32")
 
-    logger.info(f"Creating dataset...")
+    logger.info("Creating dataset...")
     return xr.Dataset(name2da_av)
 
 
@@ -176,11 +180,12 @@ def get_connectivity(
     domain: fabmos.domain.ClusteredDomain,
     u: xr.DataArray,
     v: xr.DataArray,
-    outfile: str,
+    outfile: Union[str, os.PathLike],
     periodic_lon: bool = False,
     depth_integrate: bool = True,
     logger: Optional[logging.Logger] = None,
     on_grid: bool = False,
+    dz: Optional[np.ndarray] = None,
 ):
     """Compute time-varying connectivity matrix from u and v velocity fields
     and save this to a NetCDF file. Interpolate and rotate velocities
@@ -189,17 +194,19 @@ def get_connectivity(
     Args:
         domain: target domain that defines the grid and clusters for which to
             compute connectivity
-        u: x-velocity on the native (pre-clustering) U grid (if on_grid=False)
-            or eastward velocity (if on_grid=True)
-        v: y-velocity on the native (pre-clustering) V grid (if on_grid=False)
-            or northward velocity (if on_grid=True)
+        u: eastward velocity (if on_grid=False) or x-velocity on the native
+            (pre-clustering) U grid (if on_grid=True)
+        v: northward velocity (if on_grid=False) or y-velocity on the native
+            (pre-clustering) V grid (if on_grid=True)
         outfile: Path to output NetCDF file
         periodic_lon: Whether to treat longitude as periodic when interpolating
+            (only used if on_grid=False)
         depth_integrate: Whether to integrate connectivity vertically (True)
             or keep it as a function of depth (False)
         logger: Optional logger for progress messages
         on_grid: Whether u and v are already on the native grid (True)
             or need to be interpolated and rotated (False)
+        dz: Optional array of layer thicknesses (only needed if depth_integrate=True)
     """
     if logger is None:
         logging.basicConfig(level=logging.INFO)
@@ -209,24 +216,26 @@ def get_connectivity(
     assert depth.ndim == 1, "Expected 1D depth coordinate"
     assert (depth[1:] > depth[:-1]).all(), "Depth must be monotonically increasing"
 
-    depth_if = np.zeros_like(depth, shape=(depth.size + 1,))
-    depth_if[-1] = depth[-1]
-    depth_if[1:-1] = 0.5 * (depth[:-1] + depth[1:])
-    dz = depth_if[1:] - depth_if[:-1]
+    if dz is None:
+        depth_if = np.zeros_like(depth, shape=(depth.size + 1,))
+        depth_if[-1] = depth[-1]
+        depth_if[1:-1] = 0.5 * (depth[:-1] + depth[1:])
+        dz = depth_if[1:] - depth_if[:-1]
+    assert dz.shape == depth.shape, f"Expected dz shape {depth.shape}, got {dz.shape}"
+    assert (dz >= 0).all(), "Layer thicknesses must be non-negative"
     depthdim = u.getm.z.dims[0]
 
-    def interpolate(values: xr.DataArray, lon: np.ndarray, lat: np.ndarray):
-        values = fabmos.input.limit_region(
-            values,
-            lon.min(),
-            lon.max(),
-            lat.min(),
-            lat.max(),
-            periodic_lon=periodic_lon,
-        )
-        return fabmos.input.horizontal_interpolation(values, lon, lat)
+    def get_clipped_dz(H):
+        depth_if = np.zeros(shape=(dz.size + 1,) + H.shape)
+        depth_if[1:] = dz.cumsum()[:, np.newaxis]
+        np.minimum(depth_if, H, out=depth_if)
+        return np.diff(depth_if, axis=0)
+
+    face_U = domain.connections.length_u * get_clipped_dz(domain.connections.H_u)
+    face_V = domain.connections.length_v * get_clipped_dz(domain.connections.H_v)
 
     if on_grid:
+        # Verify that u and v have the correct shape for the native grid
         ny, nx = domain.full_mask.shape
         assert u.shape[-2:] == (
             ny,
@@ -237,6 +246,18 @@ def get_connectivity(
             nx,
         ), f"Expected v shape (..., {ny}, {nx}), got {v.shape}"
     else:
+        # Interpolate velocities to the interfaces between clusters
+        def interpolate(values: xr.DataArray, lon: np.ndarray, lat: np.ndarray):
+            values = fabmos.input.limit_region(
+                values,
+                lon.min(),
+                lon.max(),
+                lat.min(),
+                lat.max(),
+                periodic_lon=periodic_lon,
+            )
+            return fabmos.input.horizontal_interpolation(values, lon, lat)
+
         u_U = interpolate(u, domain.connections.lon_u, domain.connections.lat_u)
         u_V = interpolate(u, domain.connections.lon_v, domain.connections.lat_v)
         v_U = interpolate(v, domain.connections.lon_u, domain.connections.lat_u)
@@ -270,10 +291,41 @@ def get_connectivity(
         )
         ncvar.long_name = "horizontal exchange"
         ncvar.units = "m3 s-1" if depth_integrate else "m2 s-1"
+
+        ncinflow = nc.createVariable(
+            "net_inflow",
+            float,
+            [d for d in extra_dims if d != depthdim] + ["target"],
+        )
+        ncinflow.long_name = (
+            "net inflow into cluster = sum of exchange over source clusters"
+        )
+        ncinflow.units = "m3 s-1"
+        if not depth_integrate:
+            nch = nc.createVariable("h", depth.dtype, (depthdim,))
+            nch.units = "m"
+            nch.long_name = "layer thickness"
+            nch[:] = dz
+
+            ncdiv = nc.createVariable(
+                "divergence", float, u.dims[:-2] + ("target",), fill_value=-2e20
+            )
+            ncdiv.long_name = "local divergence = relative loss of volume"
+            ncdiv.units = "s-1"
+
+            ncw = nc.createVariable(
+                "w", float, u.dims[:-2] + ("target",), fill_value=-2e20
+            )
+            ncw.long_name = (
+                "inferred net vertical velocity at top of layer (>0 for downward)"
+            )
+            ncw.units = "m s-1"
         ntime = u.shape[0]
         for itime in range(ntime):
             logger.info(f"  Saving connectivity for time {itime} of {ntime}...")
             if on_grid:
+                # Velocities on the original (pre-clustering) U and V grid.
+                # Extract values at interfaces connecting clusters
                 u_cur = u[itime].values[domain.connections.uconnection]
                 v_cur = v[itime].values[domain.connections.vconnection]
             else:
@@ -283,17 +335,28 @@ def get_connectivity(
                 u_cur, _ = domain.connections.rotator_u(u_U[itime], v_U[itime])
                 _, v_cur = domain.connections.rotator_v(u_V[itime], v_V[itime])
 
-            # Velocity integrated along horizontal interfaces between clusters (m2 s-1)
-            u_cur = np.nan_to_num(u_cur) * domain.connections.length_u
-            v_cur = np.nan_to_num(v_cur) * domain.connections.length_v
+            # Per-layer volume flow between clusters = velocity integrated over xy-z interfaces (m3 s-1)
+            u_cur = np.nan_to_num(u_cur) * face_U
+            v_cur = np.nan_to_num(v_cur) * face_V
             flow_across = domain.connections(u_cur, v_cur)
 
             if depth_integrate:
-                flow_across = (flow_across * dz[:, np.newaxis, np.newaxis]).sum(axis=0)
+                flow_across = flow_across.sum(axis=0)
             inflow = flow_across.sum(axis=-2)
             outflow = flow_across.sum(axis=-1)
-            i = np.arange(domain.nx)
-            flow_across[..., i, i] = -inflow
+            ncinflow[itime, ...] = (inflow - outflow).sum(axis=0)
+            if not depth_integrate:
+                net_outflow = outflow - inflow  # recall: volume flow (m3 s-1)
+                net_outflow_from_bottom = net_outflow[::-1].cumsum(axis=0)  # m3 s-1
+                Vdiv = domain.hypsograph.volume_from_elevation(
+                    -depth + 0.5 * dz
+                ) - domain.hypsograph.volume_from_elevation(-depth - 0.5 * dz)
+                ncdiv[itime, ...] = np.ma.divide(net_outflow, Vdiv)
+                ncw[itime, ...] = np.ma.divide(
+                    net_outflow_from_bottom[::-1],
+                    domain.hypsograph.area_from_elevation(-depth + 0.5 * dz),
+                )
+                flow_across /= dz[:, np.newaxis, np.newaxis]
             ncvar[itime, ...] = flow_across
 
 

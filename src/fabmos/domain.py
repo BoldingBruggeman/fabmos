@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Iterable, Sequence, Optional, Tuple, Union, TYPE_CHECKING
 import functools
 
 import numpy as np
@@ -20,8 +20,8 @@ class map_input_to_compressed_grid:
     def __init__(
         self,
         grid: Grid,
-        global_shape: Tuple[int],
-        global_indices: Iterable[np.ndarray],
+        global_shape: Tuple[int, ...],
+        global_indices: Sequence[np.ndarray],
     ):
         self.global_shape = global_shape
 
@@ -137,9 +137,9 @@ class map_input_to_cluster_grid:
                 mask = mask & include
             mask = mask.reshape(mask.shape[:-2] + (-1,))
             mask = np.broadcast_to(mask, np_values.shape)
-            sum = np_values.sum(axis=-1, where=mask)
+            cluster_sum = np_values.sum(axis=-1, where=mask)
             count = mask.sum(axis=-1)
-            np.divide(sum, count, where=count > 0, out=result[..., 0, icluster])
+            np.divide(cluster_sum, count, where=count > 0, out=result[..., 0, icluster])
 
         # Keep only coordinates without any horizontal coordinate dimension (x, y)
         alldims = frozenset(value.dims[-2:])
@@ -242,7 +242,7 @@ class ClustersToFullGrid(pygetm.output.operators.UnivariateTransformWithData):
                 out[slice_spec] = self._global_values
                 return out[slice_spec]
         if self.values is None:
-            raise Exception(f"self.values is None")
+            raise Exception("self.values is None")
         if compressed_values is None:
             raise Exception(f"compressed_values is None {self._source.name}")
         # raise Exception(f'{self.values.shape}, {self._slice[0]!r}, {self._slice[1].shape!r} {self._source!r}')
@@ -307,9 +307,7 @@ def freeze_vertical_coordinates(
     grid.D.attrs["_time_varying"] = False
 
 
-def compress(
-    full_domain: Optional[Domain], extra_fields: Optional[Iterable[str]] = ()
-) -> Domain:
+def compress(full_domain: Domain, extra_fields: Optional[Iterable[str]] = ()) -> Domain:
     """Compress domain by filtering out all land points (with mask=0).
 
     The resulting domain will have ny=1 and nx=number of wet points.
@@ -330,7 +328,7 @@ def compress(
         f" to {nwet} wet points ({100 * nwet / n_ori:.1f} %)"
     )
 
-    # Squeeze out land points from arguments that wil be provided to Domain
+    # Squeeze out land points from arguments that will be provided to Domain
     kwargs = {}
     if full_domain.comm.rank == 0:
         kwargs["mask"] = 1
@@ -408,6 +406,8 @@ class ClusterConnections:
         self.lat_v = domain.lat[2:-1:2, 1::2][vconnection]
         self.length_u = domain.dy[1::2, 2:-1:2][uconnection]
         self.length_v = domain.dx[2:-1:2, 1::2][vconnection]
+        self.H_u = domain.H[1::2, 2:-1:2][uconnection]
+        self.H_v = domain.H[2:-1:2, 1::2][vconnection]
 
         if domain.rotation is not None:
             # To support rotation of eastward u and northward v to
@@ -453,10 +453,46 @@ class ClusterConnections:
         return out
 
 
+class Hypsograph:
+    def __init__(self, H: np.ndarray, A: np.ndarray):
+        assert H.ndim == 1
+        assert (H[1:] > H[:-1]).all()
+        assert A.shape[0] == H.size
+        self.H = H
+        self.A = A
+        self.cumV = np.zeros_like(A)
+        delta_H = (H[1:] - H[:-1]).reshape((-1,) + (1,) * (A.ndim - 1))
+        vol_per_layer = 0.5 * delta_H * (A[:-1] + A[1:])
+        self.cumV[:-1] = vol_per_layer[::-1].cumsum(axis=0)[::-1]
+
+    def _find(self, source: np.ndarray, z: npt.ArrayLike) -> np.ndarray:
+        H = -np.asarray(z)
+        i = np.clip(self.H.searchsorted(H) - 1, 0, self.H.size - 2)
+        fright = (H - self.H[i]) / (self.H[i + 1] - self.H[i])
+        s = (slice(None),) * fright.ndim + (np.newaxis,) * (source.ndim - 1)
+        return source[i] + fright[s] * (source[i + 1] - source[i])
+
+    def area_from_elevation(self, z: npt.ArrayLike) -> np.ndarray:
+        """Find surface area at given elevation
+
+        Args:
+          z: Elevation(s) at which to find the area (positive upwards).
+        """
+        return self._find(self.A, z)
+
+    def volume_from_elevation(self, z: npt.ArrayLike) -> np.ndarray:
+        """Find volume below the given elevation.
+
+        Args:
+          z: Elevation(s) at which to find the volume (positive upwards).
+        """
+        return self._find(self.cumV, z)
+
+
 class ClusteredDomain(Domain):
     def __init__(
         self,
-        full_domain: Optional[Domain],
+        full_domain: Domain,
         clusters: npt.ArrayLike,
         decompress_output: bool = False,
     ):
@@ -488,7 +524,7 @@ class ClusteredDomain(Domain):
                 if source is not None:
                     global_fields[name] = source[1::2, 1::2]
             if "lon" in global_fields:
-                lon_rad = np.pi * global_fields["lon"] / 180.0
+                lon_rad = np.deg2rad(global_fields["lon"])
                 global_fields["coslon"] = np.cos(lon_rad)
                 global_fields["sinlon"] = np.sin(lon_rad)
             global_fields["j"], global_fields["i"] = np.indices(
@@ -510,7 +546,9 @@ class ClusteredDomain(Domain):
             ncluster = unique_clusters.size
             logger.info(f"Found {ncluster} unique clusters:")
 
-            cluster_index = np.full(clusters.shape, -1, dtype=np.int16)
+            # Need dtype to hold range [-1, ncluster-1]
+            index_dtype = np.min_scalar_type(min(1 - ncluster, -1))
+            cluster_index = np.full(clusters.shape, -1, dtype=index_dtype)
             for i, v in enumerate(unique_clusters):
                 cluster_index[(clusters == v) & unmasked] = i
 
@@ -518,24 +556,31 @@ class ClusteredDomain(Domain):
             for name, values in global_fields.items():
                 compressed_fields[name] = np.empty((ncluster,), dtype=values.dtype)
 
+            Hall = global_fields["H"][unmasked]
+            H_hyp = np.linspace(Hall.min(), Hall.max() + 1e-12, 1000)
+            A_hyp = np.zeros((ncluster, H_hyp.size))
             for i, c in enumerate(unique_clusters):
                 selected = cluster_index == i
 
                 # Average over cluster (or in the case of surface area: sum)
-                cluster_values = {}
-                for name, values in global_fields.items():
-                    cluster_values[name] = values[selected]
-                    compressed_fields[name][i] = cluster_values[name].mean()
-                area = cluster_values["area"].sum()
-                compressed_fields["area"][i] = area
+                cluster_values = {n: v[selected] for n, v in global_fields.items()}
+                weights = cluster_values["area"]
+                for n, v in cluster_values.items():
+                    if n == "area":
+                        compressed_fields["area"][i] = v.sum()
+                    else:
+                        compressed_fields[n][i] = np.average(v, weights=weights)
+                area = compressed_fields["area"][i]
                 if "lon" in global_fields:
-                    compressed_fields["lon"] = (
+                    compressed_fields["lon"][i] = np.rad2deg(
                         np.arctan2(
-                            compressed_fields["sinlon"], compressed_fields["coslon"]
+                            compressed_fields["sinlon"][i],
+                            compressed_fields["coslon"][i],
                         )
-                        / np.pi
-                        * 180
                     )
+
+                iH = H_hyp.searchsorted(cluster_values["H"], side="right") - 1
+                np.add.at(A_hyp[i, :], iH, cluster_values["area"])
 
                 logger.info(f"  {c}:")
                 logger.info(f"    cell count: {selected.sum()}")
@@ -570,7 +615,8 @@ class ClusteredDomain(Domain):
         )
 
         for name, r in full_domain.rivers.items():
-            self.rivers.add_by_index(name, i=cluster_index[r.j, r.i], j=0, **r.attrs)
+            icluster = cluster_index[r.j, r.i] if self.comm.rank == 0 else None
+            self.rivers.add_by_index(name, i=self.comm.bcast(icluster), j=0, **r.attrs)
 
         if self.comm.rank == 0:
             self.full_cluster_index = cluster_index
@@ -642,6 +688,15 @@ class ClusteredDomain(Domain):
             )
             interfaces += interfaces.T
             self.interfaces = interfaces
+
+            self.hypsograph = Hypsograph(H_hyp, A_hyp.T[::-1].cumsum(axis=0)[::-1])
+            ori_vol = (full_domain.area[1::2, 1::2] * full_domain._H[1::2, 1::2]).sum(
+                where=unmasked
+            )
+            new_vol = self.hypsograph.volume_from_elevation(0.0).sum()
+            logger.info(f"Original volume in clustered cells: {ori_vol:.6e} m3")
+            logger.info(f"Volume in new clusters: {new_vol:.6e} m3")
+            logger.info(f"Fractional change in volume: {new_vol / ori_vol - 1:.6e}")
 
         self.input_grid_mappers.append(
             functools.partial(
