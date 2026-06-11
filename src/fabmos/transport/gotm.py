@@ -71,6 +71,9 @@ class TwoBand(pygetm.radiation.TwoBand):
 
 class Momentum:
     def __init__(self, cnpar: float = 1.0, avmmol: float = 1.3e-6):
+        assert (
+            cnpar == 1.0
+        ), "Only cnpar=1.0 is currently supported by shear frequency calculation"
         self.cnpar = cnpar
         self.avmmol = avmmol
 
@@ -181,34 +184,40 @@ class Momentum:
             advance_component(self.u, tausx, dpdx, self.grid.cor.values * self.v.values)
         self.ufirst = not self.ufirst
 
-        # Calculate shear frequency
-        # du = self.u.values[1:] - self.u.values[:-1]
-        # dv = self.v.values[1:] - self.v.values[:-1]
-        # self.SS.values[1:-1] = du**2 + dv**2
-        SSU = 0.5 * (
-            (self.u.values[1:] - self.u.values[:-1])
-            * (self.u.values[1:] - self.uo.values[:-1])
-            + (self.u.values[1:] - self.u.values[:-1])
-            * (self.uo.values[1:] - self.u.values[:-1])
+        # Calculate squared shear frequency according to Burchard (2002)
+        # https://doi.org/10.1016/S1463-5003(02)00009-4
+        # Note GOTM code has corrected version where both distances between layer
+        # centers (dz) and distances between interfaces (h) are used.
+        # https://github.com/gotm-model/code/blob/e13cbac5fb1c2333a91ecb0e2a771810cd5b5985/src/meanflow/shear.F90
+        # Here we ignore contributions from 1-cnpar, which works as long as cnpar=1.0.
+        du = self.u.values[1:] - self.u.values[:-1]
+        dv = self.v.values[1:] - self.v.values[:-1]
+        invdz = 2.0 / (self.grid.hn.values[:-1] + self.grid.hn.values[1:])
+        invh = 1.0 / self.grid.hn.values
+        # self.SS.values[1:-1] = (du**2 + dv**2) * invdz**2  # naive discretization
+        SSU = du * (
+            (self.u.values[1:] - self.uo.values[:-1]) * invh[:-1]
+            + (self.uo.values[1:] - self.u.values[:-1]) * invh[1:]
         )
-        SSV = 0.5 * (
-            (self.v.values[1:] - self.v.values[:-1])
-            * (self.v.values[1:] - self.vo.values[:-1])
-            + (self.v.values[1:] - self.v.values[:-1])
-            * (self.vo.values[1:] - self.v.values[:-1])
+        SSV = dv * (
+            (self.v.values[1:] - self.vo.values[:-1]) * invh[:-1]
+            + (self.vo.values[1:] - self.v.values[:-1]) * invh[1:]
         )
-        self.SS.values[1:-1] = SSU + SSV
-        self.SS.values[1:-1] /= (0.5 * (self.grid.hn[:-1] + self.grid.hn[1:])) ** 2
+        self.SS.values[1:-1] = 0.5 * (SSU + SSV) * invdz
 
-        # Calculate bottom friction
+        # Bottom friction (rr = drag * velocity)
         _pygetm.bottom_friction(
             self.u_bot, self.v_bot, self.h_bot, self.avmmol, self.rr, update_z0b=True
         )
 
-        self.ustar_b.values[...] = np.sqrt(
-            np.sqrt(self.u.values[0] ** 2 + self.v.values[0] ** 2) * self.rr.values
-        )
-        self.taub.values[...] = self.ustar_b.values**2 * RHO0
+        # Squared bottom shear velocity (m2 s-2) = drag * velocity^2
+        ustar_b2 = self.rr.values * np.hypot(self.u_bot.values, self.v_bot.values)
+
+        # Bottom shear velocity (m s-1)
+        self.ustar_b.values[...] = np.sqrt(ustar_b2)
+
+        # Bottom shear stress (Pa)
+        self.taub.values[...] = ustar_b2 * RHO0
 
 
 class Simulator(simulator.Simulator):
@@ -361,14 +370,6 @@ class Simulator(simulator.Simulator):
             attrs=dict(standard_name="sea_surface_temperature", _mask_output=True),
         )
 
-        self.buoy = self.T.array(
-            z=CENTERS,
-            name="buoy",
-            units="m s-2",
-            long_name="buoyancy",
-            attrs=dict(_mask_output=True),
-        )
-
         self.nuh_ct = None
         if self.fabm and self.fabm.has_dependency("vertical_tracer_diffusivity"):
             self.nuh_ct = self.T.array(
@@ -406,7 +407,7 @@ class Simulator(simulator.Simulator):
             self.ssu = self.ssv = self.T.array()
             self.ssu.fill(0.0)
 
-        self.relaxation: list[tuple[Array, np.ndarray, Union[float, np.ndarray]]] = []
+        self.relaxation: list[tuple[np.ndarray, np.ndarray, Union[float, np.ndarray]]] = []
 
         self.vertical_advection = pygetm.operators.VerticalAdvection(self.T)
         self._w = self.T.array(z=INTERFACES, fill=0.0)
@@ -436,61 +437,89 @@ class Simulator(simulator.Simulator):
             array = self[array]
         target = array.grid.array(z=array.z)
         if rate is None:
+            # No relaxation rate provided. Create an array to hold its spatially explicit values,
+            # and return that to the caller so the values can be set
             rate_ar = array.grid.array(z=array.z)
             ret = target, rate_ar
             rate = rate_ar.values
         else:
+            # Relaxation rate (typically a scalar) provided directly.
+            # Use that and return only the target array.
             ret = target
-        self.relaxation.append((array, target.values, rate))
+        self.relaxation.append((array.values, target.values, rate))
         return ret
 
     def _update_forcing_and_diagnostics(self, macro_active: bool):
-        # Update density and buoyancy to keep them in sync with T and S.
-        self.density.get_density(self.salt, self.temp, p=self.pres, out=self.rho)
+        """Update all forcing fields and diagnostics for FABM and GOTM.
+        This is called after state initialization and after each state update.
 
-        # From conservative temperature to in-situ sea surface temperature,
-        # needed to compute heat/momentum fluxes at the surface
-        self.density.get_potential_temperature(self.salt_sf, self.temp_sf, out=self.sst)
+        Args:
+            macro_active: whether the macro (hydrodynamics) time step is active.
+                In that case, all GOTM diagnostics need to be updated too.
+        """
+        if macro_active:
+            # Update GOTM diagnostics and forcing fields
 
-        # Calculate squared buoyancy frequency NN
-        self.density.get_buoyancy_frequency(
-            self.salt, self.temp, p=self.pres, out=self.NN
-        )
+            if self.rho.saved:
+                # Density from temperature, salinity, and pressure
+                self.density.get_density(self.salt, self.temp, p=self.pres, out=self.rho)
 
-        # Update air-sea fluxes of heat and momentum (all on T grid)
-        # Note: sst is the in-situ surface temperature, whereas temp_sf is the
-        # conservative surface temperature (salt_sf is absolute salinity)
-        self.airsea(
-            self.time,
-            self.sst,
-            self.ssu,
-            self.ssv,
-            calculate_heat_flux=True,
-        )
-        self.ice(macro_active, self.temp_sf, self.salt_sf, self.airsea)
-
-        # Update surface shear velocity (used by GOTM). This requires updated
-        # surface stresses and there can only be done after the airsea update.
-        _pygetm.surface_shear_velocity(self.airsea.taux, self.airsea.tauy, self.ustar_s)
-
-        if self.charnock:
-            # See Craig, P. D., & Banner, M. L. (1994).
-            # https://doi.org/10.1175/1520-0485(1994)024<2546:MWETIT>2.0.CO;2
-            self.z0s.values[...] = np.maximum(
-                self.charnock_val / GRAVITY * self.ustar_s.values**2, self.z0s_min
+            # From conservative temperature to in-situ sea surface temperature,
+            # needed to compute heat/momentum fluxes at the surface
+            self.density.get_potential_temperature(
+                self.salt_sf, self.temp_sf, out=self.sst
             )
 
+            # Calculate squared buoyancy frequency NN,
+            # defined at layer interfaces and needed for GOTM turbulence.
+            self.density.get_buoyancy_frequency(
+                self.salt, self.temp, p=self.pres, out=self.NN
+            )
+
+            # Update air-sea fluxes of heat and momentum (all on T grid)
+            # Note: sst is the in-situ surface temperature, whereas temp_sf is the
+            # conservative surface temperature (salt_sf is absolute salinity)
+            self.airsea(
+                self.time,
+                self.sst,
+                self.ssu,
+                self.ssv,
+                calculate_heat_flux=True,
+            )
+            self.ice(macro_active, self.temp_sf, self.salt_sf, self.airsea)
+
+            # Update surface shear velocity (used by GOTM). This requires updated
+            # surface stresses and there can only be done after the airsea update.
+            _pygetm.surface_shear_velocity(
+                self.airsea.taux, self.airsea.tauy, self.ustar_s
+            )
+
+            if self.charnock:
+                # Surface roughness from shear velocity according to Charnock (1955)
+                # See Craig, P. D., & Banner, M. L. (1994), Eq 40
+                # https://doi.org/10.1175/1520-0485(1994)024<2546:MWETIT>2.0.CO;2
+                self.z0s.values[...] = np.maximum(
+                    self.charnock_val / GRAVITY * self.ustar_s.values**2, self.z0s_min
+                )
+
+            if self.nuh_ct is not None:
+                # Update vertical tracer diffusivity at layer centers,
+                # not needed for hydrodynamics but used by FABM since nuh_ct is not None
+                self.turbulence.nuh.interp(self.nuh_ct)
+        else:
+            # Update shortwave radiation even on the inner FABM time step.
+            self.airsea.update_shortwave_radiation(self.time)
+
         # Update radiation in the interior.
-        # This must come after the airsea update, which is responsible for
-        # calculating downwelling shortwave radiation at the water surface (swr)
+        # This must come after airsea updates downwelling shortwave radiation
+        # just below the water surface (swr)
         self.radiation(self.airsea.swr, self.fabm.kc if self.fabm else None)
 
-        if self.nuh_ct is not None:
-            self.turbulence.nuh.interp(self.nuh_ct)
-
+        # Update FABM sources and diagnostics
         super()._update_forcing_and_diagnostics(macro_active)
 
     def transport(self, timestep: float):
+        """Update GOTM state and transport all tracers."""
         self.momentum.advance(
             timestep,
             self.airsea.taux,
@@ -515,9 +544,12 @@ class Simulator(simulator.Simulator):
                 tracer.vertical_velocity is not None
                 and tracer.vertical_velocity.all_values.any()
             ):
+                # Vertically advect this tracer,
+                # using velocities interpolated to layer interfaces
                 tracer.vertical_velocity.interp(self._w)
                 self.vertical_advection(self.momentum.w, self._w, timestep, tracer)
 
+        # Vertical diffusion of tracers using GOTM's turbulent diffusivity.
         self.tracers._diffuse(timestep, self.turbulence.nuh)
 
         self._horizontal_connectivity(timestep)
@@ -529,5 +561,6 @@ class Simulator(simulator.Simulator):
                 gains = tracer.values[:, 0, :, np.newaxis] * self.connectivity_matrix
                 tracer.values[:, 0, :] += gains.sum(axis=-2) * scale
 
-        for array, target, rate in self.relaxation:
-            array += (target - array.values) * (rate * timestep)
+        # Relax selected arrays towards target values
+        for values, target, rate in self.relaxation:
+            values += (target - values) * (rate * timestep)
