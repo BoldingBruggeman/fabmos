@@ -600,6 +600,13 @@ class ClusteredDomain(Domain):
                 pygetm.core.Locator(**full_domain._tcoords(mask=final_mask))
             )
 
+            min_area = compressed_fields["area"].min()
+            max_area = compressed_fields["area"].max()
+            logger.info(
+                f"Cell area ranges between {1e-6 * min_area:.1f}"
+                f" and {1e-6 * max_area:.1f} km2"
+            )
+
         super().__init__(
             nx=full_domain.comm.bcast(ncluster),
             ny=1,
