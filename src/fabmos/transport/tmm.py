@@ -584,6 +584,7 @@ class Simulator(simulator.Simulator):
         """
         source_array = self._get_existing_fabm_variable(source)
         target_array = self.fabm.get_dependency(target)
+        target_array.attrs["_part_of_state"] = True
         target_array.fill(initial_value)
         cum_source = source_array.grid.array(fill=0.0)
         iupdate = update_interval if isinstance(update_interval, int) else None
