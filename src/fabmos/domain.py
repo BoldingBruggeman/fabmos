@@ -754,8 +754,10 @@ class ClusteredDomain(Domain):
                 cmap = cmocean.cm.deep
                 cmap.set_bad("gray")
 
-        elif field.ndim == 1:
-            field = field[np.newaxis, :]
+        else:
+            field = np.asarray(field)
+            if field.ndim == 1:
+                field = field[np.newaxis, :]
         assert field.shape == (self.ny, self.nx)
         full_values = np.ma.array(
             field[0, self.full_cluster_index], mask=self.full_mask == 0
